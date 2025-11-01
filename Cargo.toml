@@ -1,0 +1,35 @@
+[workspace]
+members = [
+    "durapack-core",
+    "durapack-cli",
+    "durapack-fuzz",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Durapack Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/durapack"
+
+[workspace.dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+blake3 = "1.5"
+bytes = "1.5"
+crc32c = "0.6"
+
+# CLI dependencies
+clap = { version = "4.4", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Dev dependencies
+proptest = "1.4"
+criterion = "0.5"

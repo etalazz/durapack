@@ -1,0 +1,27 @@
+[package]
+name = "durapack-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line tool for Durapack frame manipulation"
+
+[[bin]]
+name = "durapack"
+path = "src/main.rs"
+
+[dependencies]
+durapack-core = { path = "../durapack-core" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3.8"
+

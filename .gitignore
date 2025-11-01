@@ -1,0 +1,33 @@
+/target
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.tmp
+
+# Test outputs
+*.durp
+example_output.durp
+recovered.json
+timeline.json
+
+# Benchmark results
+/target/criterion
+
+# Coverage
+*.profraw
+*.profdata
+tarpaulin-report.html
+cobertura.xml
+

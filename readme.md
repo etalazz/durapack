@@ -5,7 +5,7 @@
     <strong>Frames that survive what the link and the disk don't.</strong>
   </p>
   <p>
-    <a href="https://github.com/yourusername/durapack/actions"><img src="https://github.com/yourusername/durapack/workflows/CI/badge.svg" alt="CI Status"></a>
+    <a href="https://github.com/etalazz/durapack/actions"><img src="https://github.com/etalazz/durapack/workflows/CI/badge.svg" alt="CI Status"></a>
     <a href="https://crates.io/crates/durapack-core"><img src="https://img.shields.io/crates/v/durapack-core.svg" alt="Crates.io"></a>
     <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
   </p>

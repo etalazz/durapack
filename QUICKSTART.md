@@ -4,7 +4,7 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/durapack
+git clone https://github.com/etalazz/durapack
 cd durapack
 
 # Build

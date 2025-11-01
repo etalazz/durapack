@@ -474,7 +474,7 @@ Not officially. This is an open-source project. Community support via GitHub iss
 
 ## Quick Links
 
-- **GitHub Repository**: https://github.com/yourusername/durapack
+- **GitHub Repository**: https://github.com/etalazz/durapack
 - **Documentation**: [docs/spec.md](docs/spec.md)
 - **Quick Start**: [QUICKSTART.md](QUICKSTART.md)
 - **Examples**: [examples/](examples/)

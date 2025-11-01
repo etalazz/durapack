@@ -3,19 +3,30 @@
 //! This module generates and validates test vectors for all corruption scenarios
 //! defined in the formal specification.
 
-use durapack_core::{
-    decoder::decode_frame_from_bytes,
-    encoder::FrameBuilder,
-    scanner::{scan_stream, scan_stream_with_stats},
-    linker::link_frames,
-    types::Frame,
-};
 use bytes::Bytes;
+use durapack_core::{
+    decoder::decode_frame_from_bytes, encoder::FrameBuilder, linker::link_frames,
+    scanner::scan_stream,
+};
 use std::fs;
 use std::path::Path;
+use std::sync::Once;
 
-/// Test vector directory
+/// Test vector directory (relative to this crate)
 const TEST_VECTOR_DIR: &str = "../test_vectors";
+
+/// Build a full path for a test vector file
+fn tv(name: &str) -> String {
+    format!("{}/{}", TEST_VECTOR_DIR, name)
+}
+
+static INIT: Once = Once::new();
+fn ensure_vectors() {
+    INIT.call_once(|| {
+        // Best-effort generation; tests will read right after
+        let _ = generate_all_test_vectors();
+    });
+}
 
 /// Generate all test vectors
 pub fn generate_all_test_vectors() -> std::io::Result<()> {
@@ -51,10 +62,7 @@ fn generate_minimal_frame() -> std::io::Result<()> {
         .build()
         .unwrap();
 
-    fs::write(
-        format!("{}/01_minimal_frame.durp", TEST_VECTOR_DIR),
-        &frame,
-    )?;
+    fs::write(tv("01_minimal_frame.durp"), &frame)?;
 
     // Generate documentation
     let doc = format!(
@@ -85,10 +93,7 @@ fn generate_minimal_frame() -> std::io::Result<()> {
         hex::encode(&frame)
     );
 
-    fs::write(
-        format!("{}/01_minimal_frame.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("01_minimal_frame.md"), doc)?;
 
     Ok(())
 }
@@ -103,10 +108,7 @@ fn generate_frame_with_crc32c() -> std::io::Result<()> {
         .build()
         .unwrap();
 
-    fs::write(
-        format!("{}/02_frame_with_crc32c.durp", TEST_VECTOR_DIR),
-        &frame,
-    )?;
+    fs::write(tv("02_frame_with_crc32c.durp"), &frame)?;
 
     let doc = format!(
         "# Test Vector 2: Frame with CRC32C
@@ -138,10 +140,7 @@ fn generate_frame_with_crc32c() -> std::io::Result<()> {
         hex::encode(&frame)
     );
 
-    fs::write(
-        format!("{}/02_frame_with_crc32c.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("02_frame_with_crc32c.md"), doc)?;
 
     Ok(())
 }
@@ -156,10 +155,7 @@ fn generate_frame_with_blake3() -> std::io::Result<()> {
         .build()
         .unwrap();
 
-    fs::write(
-        format!("{}/03_frame_with_blake3.durp", TEST_VECTOR_DIR),
-        &frame,
-    )?;
+    fs::write(tv("03_frame_with_blake3.durp"), &frame)?;
 
     let doc = format!(
         "# Test Vector 3: Frame with BLAKE3
@@ -191,10 +187,7 @@ fn generate_frame_with_blake3() -> std::io::Result<()> {
         hex::encode(&frame)
     );
 
-    fs::write(
-        format!("{}/03_frame_with_blake3.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("03_frame_with_blake3.md"), doc)?;
 
     Ok(())
 }
@@ -236,10 +229,7 @@ fn generate_linked_sequence() -> std::io::Result<()> {
     stream.extend_from_slice(&frame2);
     stream.extend_from_slice(&frame3);
 
-    fs::write(
-        format!("{}/04_linked_sequence.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("04_linked_sequence.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 4: Linked Sequence
@@ -282,10 +272,7 @@ fn generate_linked_sequence() -> std::io::Result<()> {
         hex::encode(&stream)
     );
 
-    fs::write(
-        format!("{}/04_linked_sequence.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("04_linked_sequence.md"), doc)?;
 
     Ok(())
 }
@@ -301,10 +288,7 @@ fn generate_truncated_frame() -> std::io::Result<()> {
     // Truncate after 30 bytes (middle of header)
     let truncated = &frame[..30];
 
-    fs::write(
-        format!("{}/05_truncated_frame.durp", TEST_VECTOR_DIR),
-        truncated,
-    )?;
+    fs::write(tv("05_truncated_frame.durp"), truncated)?;
 
     let doc = format!(
         "# Test Vector 5: Truncated Frame
@@ -335,10 +319,7 @@ fn generate_truncated_frame() -> std::io::Result<()> {
         hex::encode(truncated)
     );
 
-    fs::write(
-        format!("{}/05_truncated_frame.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("05_truncated_frame.md"), doc)?;
 
     Ok(())
 }
@@ -352,13 +333,17 @@ fn generate_bit_flip_error() -> std::io::Result<()> {
         .unwrap();
 
     let mut corrupted = frame.to_vec();
-    // Flip a bit in the payload (byte 60)
-    corrupted[60] ^= 0x01;
+    // Flip a bit at a safe offset within the frame body
+    let idx = if corrupted.len() > 60 {
+        60
+    } else {
+        (corrupted.len() / 2).max(1)
+    };
+    let before = corrupted[idx];
+    corrupted[idx] ^= 0x01;
+    let after = corrupted[idx];
 
-    fs::write(
-        format!("{}/06_bit_flip_error.durp", TEST_VECTOR_DIR),
-        &corrupted,
-    )?;
+    fs::write(tv("06_bit_flip_error.durp"), &corrupted)?;
 
     let doc = format!(
         "# Test Vector 6: Bit Flip Error
@@ -369,7 +354,7 @@ fn generate_bit_flip_error() -> std::io::Result<()> {
 
 ## Corruption Details
 - Corruption type: BIT FLIP
-- Location: Byte 60 (in payload)
+- Location: Byte {} (within frame)
 - Bit flipped: 0x01 (LSB)
 - Severity: Frame detectable but invalid
 
@@ -385,19 +370,19 @@ fn generate_bit_flip_error() -> std::io::Result<()> {
 ```
 
 ## Diff from Clean
-Original byte 60: 0x{:02X}
-Corrupted byte 60: 0x{:02X}
+Original byte {}: 0x{:02X}
+Corrupted byte {}: 0x{:02X}
 ",
         corrupted.len(),
+        idx,
         hex::encode(&corrupted),
-        frame[60],
-        corrupted[60]
+        idx,
+        before,
+        idx,
+        after
     );
 
-    fs::write(
-        format!("{}/06_bit_flip_error.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("06_bit_flip_error.md"), doc)?;
 
     Ok(())
 }
@@ -431,14 +416,15 @@ fn generate_burst_error() -> std::io::Result<()> {
     stream.extend_from_slice(&frame3);
 
     // Corrupt 50 bytes in the middle (destroying frame2)
-    for i in burst_start..(burst_start + 50).min(burst_end) {
-        stream[i] = 0xFF;
+    for byte in stream
+        .iter_mut()
+        .take((burst_start + 50).min(burst_end))
+        .skip(burst_start)
+    {
+        *byte = 0xFF;
     }
 
-    fs::write(
-        format!("{}/07_burst_error.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("07_burst_error.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 7: Burst Error
@@ -471,10 +457,7 @@ fn generate_burst_error() -> std::io::Result<()> {
         hex::encode(&stream)
     );
 
-    fs::write(
-        format!("{}/07_burst_error.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("07_burst_error.md"), doc)?;
 
     Ok(())
 }
@@ -502,10 +485,7 @@ fn generate_inserted_garbage() -> std::io::Result<()> {
 
     stream.extend_from_slice(&frame2);
 
-    fs::write(
-        format!("{}/08_inserted_garbage.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("08_inserted_garbage.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 8: Inserted Garbage
@@ -535,10 +515,7 @@ fn generate_inserted_garbage() -> std::io::Result<()> {
         hex::encode(&stream[..200.min(stream.len())])
     );
 
-    fs::write(
-        format!("{}/08_inserted_garbage.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("08_inserted_garbage.md"), doc)?;
 
     Ok(())
 }
@@ -572,10 +549,7 @@ fn generate_deleted_bytes() -> std::io::Result<()> {
     // Delete 30 bytes from frame2
     stream.drain(delete_start..(delete_start + 30));
 
-    fs::write(
-        format!("{}/09_deleted_bytes.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("09_deleted_bytes.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 9: Deleted Bytes
@@ -605,10 +579,7 @@ fn generate_deleted_bytes() -> std::io::Result<()> {
         hex::encode(&stream)
     );
 
-    fs::write(
-        format!("{}/09_deleted_bytes.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("09_deleted_bytes.md"), doc)?;
 
     Ok(())
 }
@@ -641,10 +612,7 @@ fn generate_swapped_frames() -> std::io::Result<()> {
     stream.extend_from_slice(&frame1);
     stream.extend_from_slice(&frame2);
 
-    fs::write(
-        format!("{}/10_swapped_frames.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("10_swapped_frames.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 10: Swapped Frames
@@ -674,10 +642,7 @@ fn generate_swapped_frames() -> std::io::Result<()> {
         hex::encode(&stream)
     );
 
-    fs::write(
-        format!("{}/10_swapped_frames.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("10_swapped_frames.md"), doc)?;
 
     Ok(())
 }
@@ -696,10 +661,7 @@ fn generate_wrong_checksum() -> std::io::Result<()> {
     corrupted[len - 4] ^= 0xFF;
     corrupted[len - 3] ^= 0xFF;
 
-    fs::write(
-        format!("{}/11_wrong_checksum.durp", TEST_VECTOR_DIR),
-        &corrupted,
-    )?;
+    fs::write(tv("11_wrong_checksum.durp"), &corrupted)?;
 
     let doc = format!(
         "# Test Vector 11: Wrong Checksum
@@ -729,10 +691,7 @@ fn generate_wrong_checksum() -> std::io::Result<()> {
         hex::encode(&corrupted)
     );
 
-    fs::write(
-        format!("{}/11_wrong_checksum.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("11_wrong_checksum.md"), doc)?;
 
     Ok(())
 }
@@ -757,10 +716,7 @@ fn generate_duplicate_frames() -> std::io::Result<()> {
     stream.extend_from_slice(&frame2);
     stream.extend_from_slice(&frame1); // Duplicate
 
-    fs::write(
-        format!("{}/12_duplicate_frames.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("12_duplicate_frames.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 12: Duplicate Frames
@@ -791,10 +747,7 @@ fn generate_duplicate_frames() -> std::io::Result<()> {
         hex::encode(&stream)
     );
 
-    fs::write(
-        format!("{}/12_duplicate_frames.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("12_duplicate_frames.md"), doc)?;
 
     Ok(())
 }
@@ -848,10 +801,7 @@ fn generate_reordered_frames() -> std::io::Result<()> {
     stream.extend_from_slice(&frame4);
     stream.extend_from_slice(&frame2);
 
-    fs::write(
-        format!("{}/13_reordered_frames.durp", TEST_VECTOR_DIR),
-        &stream,
-    )?;
+    fs::write(tv("13_reordered_frames.durp"), &stream)?;
 
     let doc = format!(
         "# Test Vector 13: Reordered Frames with Hash Links
@@ -885,10 +835,7 @@ fn generate_reordered_frames() -> std::io::Result<()> {
         hex::encode(&stream)
     );
 
-    fs::write(
-        format!("{}/13_reordered_frames.md", TEST_VECTOR_DIR),
-        doc,
-    )?;
+    fs::write(tv("13_reordered_frames.md"), doc)?;
 
     Ok(())
 }
@@ -904,7 +851,8 @@ mod tests {
 
     #[test]
     fn test_validate_minimal_frame() {
-        let data = fs::read("test_vectors/01_minimal_frame.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("01_minimal_frame.durp")).unwrap();
         let frame = decode_frame_from_bytes(&data).unwrap();
         assert_eq!(frame.header.frame_id, 1);
         assert_eq!(frame.payload.len(), 0);
@@ -912,7 +860,8 @@ mod tests {
 
     #[test]
     fn test_validate_linked_sequence() {
-        let data = fs::read("test_vectors/04_linked_sequence.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("04_linked_sequence.durp")).unwrap();
         let located = scan_stream(&data);
         assert_eq!(located.len(), 3);
 
@@ -926,14 +875,16 @@ mod tests {
 
     #[test]
     fn test_validate_truncated_frame() {
-        let data = fs::read("test_vectors/05_truncated_frame.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("05_truncated_frame.durp")).unwrap();
         let result = decode_frame_from_bytes(&data);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_bit_flip_error() {
-        let data = fs::read("test_vectors/06_bit_flip_error.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("06_bit_flip_error.durp")).unwrap();
         let result = decode_frame_from_bytes(&data);
         assert!(result.is_err());
         // Should be ChecksumMismatch error
@@ -941,7 +892,8 @@ mod tests {
 
     #[test]
     fn test_validate_burst_error() {
-        let data = fs::read("test_vectors/07_burst_error.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("07_burst_error.durp")).unwrap();
         let located = scan_stream(&data);
         // Should find 2 frames (1 and 3), frame 2 is destroyed
         assert_eq!(located.len(), 2);
@@ -949,7 +901,8 @@ mod tests {
 
     #[test]
     fn test_validate_inserted_garbage() {
-        let data = fs::read("test_vectors/08_inserted_garbage.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("08_inserted_garbage.durp")).unwrap();
         let located = scan_stream(&data);
         // Should find both frames despite garbage
         assert_eq!(located.len(), 2);
@@ -957,7 +910,8 @@ mod tests {
 
     #[test]
     fn test_validate_swapped_frames() {
-        let data = fs::read("test_vectors/10_swapped_frames.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("10_swapped_frames.durp")).unwrap();
         let located = scan_stream(&data);
         assert_eq!(located.len(), 3);
 
@@ -969,7 +923,8 @@ mod tests {
 
     #[test]
     fn test_validate_reordered_with_links() {
-        let data = fs::read("test_vectors/13_reordered_frames.durp").unwrap();
+        ensure_vectors();
+        let data = fs::read(tv("13_reordered_frames.durp")).unwrap();
         let located = scan_stream(&data);
         assert_eq!(located.len(), 4);
 
@@ -984,4 +939,3 @@ mod tests {
         assert_eq!(timeline.frames[3].header.frame_id, 4);
     }
 }
-

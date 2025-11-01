@@ -289,7 +289,7 @@ mod tests {
         // Create frames with a missing middle frame
         let frame1 = Frame::new(FrameHeader::new(1, [0u8; 32], 4), Bytes::from("test"));
 
-        let hash1 = frame1.compute_hash();
+        let _hash1 = frame1.compute_hash();
 
         // Frame 2 is missing!
         let fake_hash2 = [1u8; 32];

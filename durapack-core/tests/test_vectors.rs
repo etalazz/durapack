@@ -15,7 +15,7 @@ use std::fs;
 use std::path::Path;
 
 /// Test vector directory
-const TEST_VECTOR_DIR: &str = "test_vectors";
+const TEST_VECTOR_DIR: &str = "../test_vectors";
 
 /// Generate all test vectors
 pub fn generate_all_test_vectors() -> std::io::Result<()> {

@@ -478,7 +478,7 @@ Not officially. This is an open-source project. Community support via GitHub iss
 - **Documentation**: [docs/spec.md](docs/spec.md)
 - **Quick Start**: [QUICKSTART.md](QUICKSTART.md)
 - **Examples**: [examples/](examples/)
-- **Implementation Guide**: [IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION_COMPLETE.md)
+- **Implementation Guide**: [IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION)
 
 ---
 

@@ -264,7 +264,7 @@ Available features:
 - **Specification**: `docs/spec.md`
 - **Examples**: `examples/`
 - **API Docs**: Run `cargo doc --open`
-- **GitHub**: https://github.com/yourusername/durapack
+- **GitHub**: https://github.com/etalazz/durapack
 
 ## License
 

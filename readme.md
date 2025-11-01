@@ -1,29 +1,53 @@
-# Durapack
+<div align="center">
+  <img src="durapack_logo.png" alt="Durapack Logo" width="150">
+  <h1>Durapack</h1>
+  <p>
+    <strong>Frames that survive what the link and the disk don't.</strong>
+  </p>
+  <p>
+    <a href="https://github.com/yourusername/durapack/actions"><img src="https://github.com/yourusername/durapack/workflows/CI/badge.svg" alt="CI Status"></a>
+    <a href="https://crates.io/crates/durapack-core"><img src="https://img.shields.io/crates/v/durapack-core.svg" alt="Crates.io"></a>
+    <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
+  </p>
+</div>
 
-[![CI](https://github.com/yourusername/durapack/workflows/CI/badge.svg)](https://github.com/yourusername/durapack/actions)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
-[![Crates.io](https://img.shields.io/crates/v/durapack-core.svg)](https://crates.io/crates/durapack-core)
-
-**Frames that survive what the link and the disk don't.**
+---
 
 Durapack is a Rust library for encoding telemetry, audit, or mission data so that it remains **recoverable even when the storage or link is damaged**. Each Durapack record ("frame") is **self-locating** (has a strong marker), **self-describing** (carries its own header/length), and **bidirectionally linkable** (can be re-threaded using IDs or hashes).
 
-## Features
+## 📖 Table of Contents
 
-- **Self-synchronization**: Detect frame boundaries in noisy/damaged streams
-- **Local decodability**: Parse a single frame without external schema files
-- **Bidirectional reconstruction**: Reassemble timelines using forward/back references
-- **FEC-ready layout**: Payload kept separable for erasure coding
-- **Small, auditable core**: Minimal dependencies, pure Rust
+- [✨ Features](#-features)
+- [🎯 Use Cases](#-use-cases)
+- [🚀 Quick Start](#-quick-start)
+- [🛠️ CLI Tool](#️-cli-tool)
+- [🏗️ Architecture](#️-architecture)
+- [📦 Frame Format](#-frame-format)
+- [⏱️ Performance](#️-performance)
+- [✅ Testing](#-testing)
+- [📚 Documentation](#-documentation)
+- [🏆 Why Durapack is Better](#-why-durapack-is-better)
+- [🤝 Contributing](#-contributing)
+- [📜 License](#-license)
 
-## Use Cases
+---
 
-- **Space/satellite data**: Reconstruct telemetry from partial downlinks
-- **Black-box forensics**: Recover data from damaged flight recorders
-- **Tactical networks**: Stitch together partial captures from field units
-- **Long-term archives**: Data that can survive bit rot and media degradation
+## ✨ Features
 
-## Quick Start
+- **Self-synchronization**: Detect frame boundaries in noisy/damaged streams.
+- **Local decodability**: Parse a single frame without external schema files.
+- **Bidirectional reconstruction**: Reassemble timelines using forward/back references.
+- **FEC-ready layout**: Payload kept separable for erasure coding.
+- **Small, auditable core**: Minimal dependencies, pure Rust.
+
+## 🎯 Use Cases
+
+- **🛰️ Space/satellite data**: Reconstruct telemetry from partial downlinks.
+- **✈️ Black-box forensics**: Recover data from damaged flight recorders.
+- **📡 Tactical networks**: Stitch together partial captures from field units.
+- **🗄️ Long-term archives**: Data that can survive bit rot and media degradation.
+
+## 🚀 Quick Start
 
 ### Installation
 
@@ -52,17 +76,6 @@ let frame = FrameBuilder::new(1)
 std::fs::write("data.durp", frame)?;
 ```
 
-### Decoding Frames
-
-```rust
-use durapack_core::decoder::decode_frame_from_bytes;
-
-let data = std::fs::read("data.durp")?;
-let frame = decode_frame_from_bytes(&data)?;
-
-println!("Frame {}: {:?}", frame.header.frame_id, frame.payload);
-```
-
 ### Scanning Damaged Data
 
 ```rust
@@ -76,24 +89,9 @@ let located_frames = scan_stream(&damaged_data);
 println!("Recovered {} frames from damaged file", located_frames.len());
 ```
 
-### Reconstructing Timelines
+---
 
-```rust
-use durapack_core::linker::link_frames;
-
-let frames = located_frames.into_iter()
-    .map(|lf| lf.frame)
-    .collect();
-
-let timeline = link_frames(frames);
-
-println!("Timeline: {} frames, {} gaps", 
-    timeline.frames.len(),
-    timeline.gaps.len()
-);
-```
-
-## CLI Tool
+## 🛠️ CLI Tool
 
 Install the command-line tool:
 
@@ -101,39 +99,24 @@ Install the command-line tool:
 cargo install durapack-cli
 ```
 
-### Pack data into frames
+### Commands
 
-```bash
-durapack pack --input data.json --output data.durp --blake3
-```
+- **`pack`**: Read JSON/CBOR → frames → file.
+- **`scan`**: Scan damaged file → print recovered frames as JSON.
+- **`verify`**: Check links, hashes, and report gaps.
+- **`timeline`**: Rethread and export ordered result.
 
-### Scan damaged file
+---
 
-```bash
-durapack scan --input damaged.durp --output recovered.json
-```
-
-### Verify integrity
-
-```bash
-durapack verify --input data.durp --report-gaps
-```
-
-### Reconstruct timeline
-
-```bash
-durapack timeline --input data.durp --output timeline.json
-```
-
-## Architecture
+## 🏗️ Architecture
 
 Durapack is organized as a Rust workspace:
 
-- **`durapack-core`**: Core library (encoding, decoding, scanning, linking)
-- **`durapack-cli`**: Command-line tool
-- **`durapack-fuzz`**: Fuzzing harness (optional)
+- **`durapack-core`**: Core library (encoding, decoding, scanning, linking).
+- **`durapack-cli`**: Command-line tool.
+- **`durapack-fuzz`**: Fuzzing harness (optional).
 
-## Frame Format
+## 📦 Frame Format
 
 Each frame consists of:
 
@@ -144,14 +127,16 @@ Each frame consists of:
    4 bytes   46 bytes   N bytes   0-32 bytes
 ```
 
-- **Marker**: `"DURP"` - enables byte-by-byte scanning
-- **Header**: version, frame_id, prev_hash, payload_len, flags
-- **Payload**: Application data
-- **Trailer**: Optional CRC32C or BLAKE3 hash
+- **Marker**: `"DURP"` - enables byte-by-byte scanning.
+- **Header**: version, frame_id, prev_hash, payload_len, flags.
+- **Payload**: Application data.
+- **Trailer**: Optional CRC32C or BLAKE3 hash.
 
-See [Frame Specification](docs/spec.md) for details.
+> For a deep dive, see the [**Frame Specification**](docs/spec.md).
 
-## Performance
+---
+
+## ⏱️ Performance
 
 Benchmarks on an Intel i7-10700K:
 
@@ -161,34 +146,17 @@ Benchmarks on an Intel i7-10700K:
 | Decode    | 1KB  | ~850 MB/s  |
 | Scan      | 10MB | ~600 MB/s  |
 
-Run benchmarks:
+Run benchmarks: `cargo bench -p durapack-core`
 
-```bash
-cargo bench -p durapack-core
-```
+## ✅ Testing
 
-## Testing
+- **Unit & Integration Tests**: `cargo test --all`
+- **Property-based Tests**: `cargo test --test proptest`
+- **Fuzzing**: `cd durapack-fuzz && cargo test`
 
-### Unit & Integration Tests
+---
 
-```bash
-cargo test --all
-```
-
-### Property-based Tests
-
-```bash
-cargo test --test proptest
-```
-
-### Fuzzing
-
-```bash
-cd durapack-fuzz
-cargo test
-```
-
-## Documentation
+## 📚 Documentation
 
 - [Frame Specification](docs/spec.md)
 - [Quick Start Guide](QUICKSTART.md)
@@ -196,73 +164,59 @@ cargo test
 - [API Documentation](https://docs.rs/durapack-core)
 - [Examples](examples/)
 
-## Design Goals
+---
 
-1. **Hostile media resilience**: Survive partial corruption, reordering, or loss
-2. **Self-contained frames**: Each frame is independently parseable
-3. **Forensic analysis**: Reconstruct timelines from incomplete captures
-4. **Deterministic encoding**: Same input always produces same output
-5. **No external dependencies**: Frame structure is self-describing
+## 🏆 Why Durapack is Better
 
-## Non-Goals
+Durapack is not just another container format; it's a complete system for robust data transport and archival, designed from the ground up to be observable, resilient, and performant in unreliable environments.
 
-- **Transport protocol**: Durapack is storage-focused, not network-focused
-- **Compression**: Apply externally to payloads
-- **Encryption**: Apply externally to payloads
-- **Real-time streaming**: Designed for durability, not latency
+### 1. Superior Resilience to Corruption
 
-## Comparison
+Most standard formats like TAR, ZIP, or simple line-delimited JSON are brittle. A single corrupted byte can render the rest of the file unreadable.
 
-| Format | Self-sync | Damage recovery | Back-links | Use case |
-|--------|-----------|-----------------|------------|----------|
-| **Durapack** | ✓ | ✓ | ✓ | Hostile media |
-| Log files | ✗ | ✗ | ✗ | Perfect storage |
-| WARC | ✓ | Partial | ✗ | Web archives |
-| CCSDS | ✓ | Partial | ✗ | Space packets |
-| Protocol Buffers | ✗ | ✗ | ✗ | RPC |
+*   **Durapack's Advantage**: It is designed to survive damage. The `scan` command uses a 4-byte `DURP` marker to find and validate individual frames even within a corrupted file. It can skip over damaged sections and salvage all remaining intact data.
 
-## Contributing
+### 2. Advanced Timeline Reconstruction
 
-Contributions are welcome! Please:
+When data is recovered, understanding the original sequence is crucial.
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure `cargo fmt` and `cargo clippy` pass
-5. Submit a pull request
+*   **Durapack's Advantage**: Each frame is cryptographically linked to the previous one using a BLAKE3 hash. The `timeline` command uses these links to reconstruct the original order of frames. Crucially, it also explicitly identifies `gaps` (where frames are missing) and `orphans` (valid frames that can't be placed in the main sequence), providing a complete diagnostic picture.
 
-## License
+### 3. High-Performance Integrity and Linking
+
+The choice of hashing algorithm impacts both security and speed.
+
+*   **Durapack's Advantage**: It uses **BLAKE3** for integrity checks and linking. BLAKE3 is a modern cryptographic hash function that is significantly faster than older standards like SHA-2 or MD5, making it ideal for high-throughput applications without compromising on security.
+
+### 4. Rich, Actionable Diagnostics
+
+Most tools simply report success or failure.
+
+*   **Durapack's Advantage**: It provides detailed, structured (JSON) reports on the state of the data. The `timeline` command calculates a `continuity` percentage and lists every gap, giving you a precise measure of data loss. This is invaluable for monitoring and diagnostics.
+
+### Comparison Summary
+
+| Feature | Standard Formats (e.g., TAR, JSONL) | Durapack |
+| :--- | :--- | :--- |
+| **Corruption Handling** | Often fails on first error. | Scans and recovers all intact frames from a damaged stream. |
+| **Data Ordering** | Relies on file order; lost if corrupted. | Reconstructs the timeline using cryptographic links. |
+| **Gap Detection** | No built-in mechanism. | Explicitly reports gaps and orphaned frames. |
+| **Integrity** | Basic checksums (like CRC32) or none. | Modern, high-speed BLAKE3 hashing for strong integrity. |
+| **Diagnostics** | Binary pass/fail. | Rich JSON output with continuity stats, gaps, and orphans. |
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please fork the repository, create a feature branch, and submit a pull request. Ensure that `cargo fmt` and `cargo clippy` pass.
+
+## 📜 License
 
 Licensed under either of:
 
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-at your option.
-
-## Citation
-
-If you use Durapack in research, please cite:
-
-```bibtex
-@software{durapack2025,
-  title={Durapack: Self-Locating Framing for Hostile Media},
-  author={Durapack Contributors},
-  year={2025},
-  url={https://github.com/yourusername/durapack}
-}
-```
-
-## Related Work
-
-- [CCSDS Space Packet Protocol](https://public.ccsds.org/Pubs/133x0b2e1.pdf)
-- [DTN Bundle Protocol](https://datatracker.ietf.org/doc/html/rfc9171)
-- [WARC Format](https://iipc.github.io/warc-specifications/)
-- [Fountain Codes](https://en.wikipedia.org/wiki/Fountain_code)
-
 ---
 
-**Status**: Prototype / Research
-
-This is a research prototype. Use in production systems at your own risk.
-
+**Status**: Prototype / Research. Use in production systems at your own risk.

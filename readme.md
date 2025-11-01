@@ -5,7 +5,8 @@
     <strong>Frames that survive what the link and the disk don't.</strong>
   </p>
   <p>
-    <a href="https://github.com/etalazz/durapack/actions?query=workflow%3ACI"><img src="https://github.com/etalazz/durapack/workflows/CI/badge.svg" alt="CI Status"></a>
+    <a href="https://github.com/etalazz/durapack/actions/workflows/ci.yml"><img src="https://github.com/etalazz/durapack/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+    <a href="https://github.com/etalazz/durapack/actions/workflows/windows-cli-smoke.yml"><img src="https://github.com/etalazz/durapack/actions/workflows/windows-cli-smoke.yml/badge.svg?branch=main" alt="Windows CLI Smoke"></a>
     <a href="https://crates.io/crates/durapack-core"><img src="https://img.shields.io/crates/v/durapack-core.svg" alt="Crates.io"></a>
     <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
   </p>
@@ -322,3 +323,12 @@ Licensed under either of:
 ## ⚖️ Export Control
 
 This software is subject to U.S. export laws and regulations. By downloading or using this software, you agree to comply with all applicable export laws and regulations.
+
+---
+
+### Continuous Integration
+
+- Linux CI runs formatting, clippy, and tests for the whole workspace.
+- Windows CI runs a PowerShell smoke test of all CLI commands.
+  - Workflow: `.github/workflows/windows-cli-smoke.yml`
+  - Local run: `pwsh -NoProfile -File scripts/test-cli.ps1`

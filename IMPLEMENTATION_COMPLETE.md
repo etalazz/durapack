@@ -16,7 +16,7 @@
 - **Crates**: 3 (core, cli, fuzz)
 - **Test Files**: 3 (unit, integration, property-based)
 - **Examples**: 2
-- **Documentation Files**: 5
+- **Documentation Files**: 6
 
 ### Test Results
 ```
@@ -46,6 +46,7 @@ Durapack/
 ├── 📄 Cargo.toml                    # Workspace configuration
 ├── 📄 README.md                     # Main documentation
 ├── 📄 QUICKSTART.md                 # Quick reference guide
+├── 📄 FAQ.md                        # Frequently asked questions
 ├── 📄 PROJECT_SUMMARY.md            # Implementation summary
 ├── 📄 CHANGELOG.md                  # Version history
 ├── 📄 CONTRIBUTING.md               # Contribution guidelines
@@ -217,6 +218,7 @@ Durapack/
 
 #### ✅ User Documentation
 - [x] README.md
+- [x] FAQ.md
 - [x] QUICKSTART.md
 - [x] PROJECT_SUMMARY.md
 - [x] CHANGELOG.md
@@ -336,6 +338,7 @@ cargo run --bin durapack -- timeline -i data.durp -o timeline.json
 | File | Purpose | Lines |
 |------|---------|-------|
 | `docs/spec.md` | Complete specification | 250+ |
+| `FAQ.md` | Frequently asked questions | 490+ |
 | `README.md` | Main documentation | 300+ |
 | `QUICKSTART.md` | Quick reference | 270+ |
 | `durapack-core/src/lib.rs` | Public API | 30 |
@@ -387,6 +390,7 @@ Potential additions (not currently implemented):
 
 ---
 
+- **FAQ**: See `FAQ.md` for common questions
 ## 📞 Support
 
 - **Documentation**: See `docs/` directory

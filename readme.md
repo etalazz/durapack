@@ -191,6 +191,8 @@ cargo test
 ## Documentation
 
 - [Frame Specification](docs/spec.md)
+- [Quick Start Guide](QUICKSTART.md)
+- [FAQ - Frequently Asked Questions](FAQ.md)
 - [API Documentation](https://docs.rs/durapack-core)
 - [Examples](examples/)
 

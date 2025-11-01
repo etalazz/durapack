@@ -678,6 +678,13 @@ Implementations MUST pass:
 
 ## 14. Test Vectors
 
+**Complete Test Vector Gallery:** See `test_vectors/` directory for comprehensive binary test files covering all corruption scenarios.
+
+**Test Vector Repository:** `test_vectors/README.md` contains a complete index with 13 test vectors covering:
+- Clean frames (minimal, CRC32C, BLAKE3, linked sequences)
+- All corruption types (bit flips, burst errors, truncation, insertion, deletion, duplication, reordering)
+- Expected behaviors and recovery rates
+
 ### 14.1 Minimal Frame (No Trailer)
 
 ```

@@ -63,4 +63,3 @@ impl From<std::io::Error> for FrameError {
         FrameError::Io(err.to_string())
     }
 }
-

@@ -17,8 +17,7 @@ pub fn execute(input: &str, output: Option<&str>, stats_only: bool) -> Result<()
     info!("Scanning file: {}", input);
 
     // Read input file
-    let data = fs::read(input)
-        .with_context(|| format!("Failed to read input file: {}", input))?;
+    let data = fs::read(input).with_context(|| format!("Failed to read input file: {}", input))?;
 
     info!("File size: {} bytes", data.len());
 
@@ -67,11 +66,12 @@ pub fn execute(input: &str, output: Option<&str>, stats_only: bool) -> Result<()
         // Print to stdout
         println!("=== Recovered Frames ===");
         for frame in &recovered {
-            println!("Frame {} @ offset {}: {} bytes",
-                frame.frame_id, frame.offset, frame.size);
+            println!(
+                "Frame {} @ offset {}: {} bytes",
+                frame.frame_id, frame.offset, frame.size
+            );
         }
     }
 
     Ok(())
 }
-

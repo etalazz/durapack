@@ -113,4 +113,3 @@ impl Default for FrameFlags {
         Self(Self::NONE)
     }
 }
-

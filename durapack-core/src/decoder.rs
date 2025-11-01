@@ -6,7 +6,7 @@ use crate::constants::{
 use crate::error::FrameError;
 use crate::types::{Frame, FrameHeader};
 use bytes::Bytes;
-use std::io::{Read, ErrorKind};
+use std::io::{ErrorKind, Read};
 
 /// Decode a frame from a reader
 ///
@@ -59,7 +59,8 @@ pub fn decode_frame<R: Read>(reader: &mut R) -> Result<Frame, FrameError> {
     let flags = FrameFlags::new(header_buf[45]);
 
     // Validate payload length
-    let total_frame_size = MIN_HEADER_SIZE as u32 + payload_len + flags.trailer_type().size() as u32;
+    let total_frame_size =
+        MIN_HEADER_SIZE as u32 + payload_len + flags.trailer_type().size() as u32;
     if total_frame_size > MAX_FRAME_SIZE {
         return Err(FrameError::FrameTooLarge(total_frame_size, MAX_FRAME_SIZE));
     }
@@ -115,7 +116,11 @@ pub fn decode_frame<R: Read>(reader: &mut R) -> Result<Frame, FrameError> {
         }
     };
 
-    Ok(Frame::with_trailer(header, Bytes::from(payload), trailer.unwrap_or_default()))
+    Ok(Frame::with_trailer(
+        header,
+        Bytes::from(payload),
+        trailer.unwrap_or_default(),
+    ))
 }
 
 /// Decode a frame from a byte slice
@@ -248,4 +253,3 @@ mod tests {
         assert_eq!(decoded.payload.as_ref(), payload);
     }
 }
-

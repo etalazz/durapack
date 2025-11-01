@@ -2,7 +2,7 @@ mod commands;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[derive(Parser)]
 #[command(name = "durapack")]
@@ -110,10 +110,7 @@ fn main() -> Result<()> {
             stats_only,
         } => commands::scan::execute(&input, output.as_deref(), stats_only),
 
-        Commands::Verify {
-            input,
-            report_gaps,
-        } => commands::verify::execute(&input, report_gaps),
+        Commands::Verify { input, report_gaps } => commands::verify::execute(&input, report_gaps),
 
         Commands::Timeline {
             input,
@@ -122,4 +119,3 @@ fn main() -> Result<()> {
         } => commands::timeline::execute(&input, &output, include_orphans),
     }
 }
-

@@ -12,8 +12,8 @@ pub fn execute(input: &str, output: &str, use_blake3: bool, start_id: u64) -> Re
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read input file: {}", input))?;
 
-    let payloads: Vec<Value> = serde_json::from_str(&content)
-        .with_context(|| "Failed to parse JSON input")?;
+    let payloads: Vec<Value> =
+        serde_json::from_str(&content).with_context(|| "Failed to parse JSON input")?;
 
     info!("Found {} payloads to pack", payloads.len());
 
@@ -45,7 +45,8 @@ pub fn execute(input: &str, output: &str, use_blake3: bool, start_id: u64) -> Re
             builder = builder.with_crc32c();
         }
 
-        let frame_struct = builder.build_struct()
+        let frame_struct = builder
+            .build_struct()
             .with_context(|| format!("Failed to build frame {}", frame_id))?;
 
         prev_hash = frame_struct.compute_hash();
@@ -70,4 +71,3 @@ pub fn execute(input: &str, output: &str, use_blake3: bool, start_id: u64) -> Re
 
     Ok(())
 }
-

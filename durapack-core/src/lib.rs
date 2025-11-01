@@ -25,8 +25,7 @@ pub mod types;
 
 // Re-export commonly used types
 pub use error::FrameError;
-pub use types::{Frame, FrameHeader, DurapackSerializable};
+pub use types::{DurapackSerializable, Frame, FrameHeader};
 
 /// Result type alias for Durapack operations
 pub type Result<T> = std::result::Result<T, FrameError>;
-

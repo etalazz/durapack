@@ -11,8 +11,7 @@ pub fn execute(input: &str, report_gaps: bool) -> Result<()> {
     info!("Verifying file: {}", input);
 
     // Read input file
-    let data = fs::read(input)
-        .with_context(|| format!("Failed to read input file: {}", input))?;
+    let data = fs::read(input).with_context(|| format!("Failed to read input file: {}", input))?;
 
     // Scan for frames
     let located_frames = scan_stream(&data);
@@ -73,10 +72,7 @@ pub fn execute(input: &str, report_gaps: bool) -> Result<()> {
     if report_gaps && !timeline.gaps.is_empty() {
         println!("\n=== Detected Gaps ===");
         for gap in &timeline.gaps {
-            println!(
-                "Gap between frame {} and frame {}",
-                gap.before, gap.after
-            );
+            println!("Gap between frame {} and frame {}", gap.before, gap.after);
         }
     }
 
@@ -94,4 +90,3 @@ pub fn execute(input: &str, report_gaps: bool) -> Result<()> {
 
     Ok(())
 }
-

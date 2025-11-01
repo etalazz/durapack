@@ -37,8 +37,7 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
     info!("Reconstructing timeline from: {}", input);
 
     // Read input file
-    let data = fs::read(input)
-        .with_context(|| format!("Failed to read input file: {}", input))?;
+    let data = fs::read(input).with_context(|| format!("Failed to read input file: {}", input))?;
 
     // Scan for frames
     let located_frames = scan_stream(&data);
@@ -115,8 +114,7 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
     let json = serde_json::to_string_pretty(&output_data)
         .with_context(|| "Failed to serialize timeline")?;
 
-    fs::write(output, json)
-        .with_context(|| format!("Failed to write output file: {}", output))?;
+    fs::write(output, json).with_context(|| format!("Failed to write output file: {}", output))?;
 
     println!("\n=== Timeline Reconstruction ===");
     println!("Ordered frames:  {}", output_data.frames.len());
@@ -127,4 +125,3 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
 
     Ok(())
 }
-

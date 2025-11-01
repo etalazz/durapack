@@ -33,7 +33,11 @@ pub trait RedundancyEncoder {
     /// # Returns
     /// A vector of FEC blocks. The first N blocks are the original frames,
     /// followed by K redundant blocks (where K = redundancy).
-    fn encode_batch(&self, frames: &[Frame], redundancy: usize) -> Result<Vec<FecBlock>, FrameError>;
+    fn encode_batch(
+        &self,
+        frames: &[Frame],
+        redundancy: usize,
+    ) -> Result<Vec<FecBlock>, FrameError>;
 }
 
 /// Trait for decoding frames from FEC blocks
@@ -46,7 +50,11 @@ pub trait RedundancyDecoder {
     ///
     /// # Returns
     /// Reconstructed frames, or an error if insufficient blocks are available
-    fn decode_batch(&self, blocks: &[FecBlock], total_frames: usize) -> Result<Vec<Frame>, FrameError>;
+    fn decode_batch(
+        &self,
+        blocks: &[FecBlock],
+        total_frames: usize,
+    ) -> Result<Vec<Frame>, FrameError>;
 
     /// Check if we have enough blocks to reconstruct the original data
     fn can_reconstruct(&self, available_blocks: usize, total_frames: usize) -> bool;
@@ -57,7 +65,11 @@ pub trait RedundancyDecoder {
 pub struct NoopEncoder;
 
 impl RedundancyEncoder for NoopEncoder {
-    fn encode_batch(&self, _frames: &[Frame], _redundancy: usize) -> Result<Vec<FecBlock>, FrameError> {
+    fn encode_batch(
+        &self,
+        _frames: &[Frame],
+        _redundancy: usize,
+    ) -> Result<Vec<FecBlock>, FrameError> {
         Err(FrameError::InvalidStructure(
             "FEC encoding not implemented".to_string(),
         ))
@@ -69,7 +81,11 @@ impl RedundancyEncoder for NoopEncoder {
 pub struct NoopDecoder;
 
 impl RedundancyDecoder for NoopDecoder {
-    fn decode_batch(&self, _blocks: &[FecBlock], _total_frames: usize) -> Result<Vec<Frame>, FrameError> {
+    fn decode_batch(
+        &self,
+        _blocks: &[FecBlock],
+        _total_frames: usize,
+    ) -> Result<Vec<Frame>, FrameError> {
         Err(FrameError::InvalidStructure(
             "FEC decoding not implemented".to_string(),
         ))
@@ -99,4 +115,3 @@ mod tests {
         assert!(!decoder.can_reconstruct(5, 10));
     }
 }
-

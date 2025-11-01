@@ -198,8 +198,6 @@ impl DurapackSerializable for String {
     }
 
     fn from_payload(bytes: &[u8]) -> Result<Self, FrameError> {
-        String::from_utf8(bytes.to_vec())
-            .map_err(|e| FrameError::Serialization(e.to_string()))
+        String::from_utf8(bytes.to_vec()).map_err(|e| FrameError::Serialization(e.to_string()))
     }
 }
-

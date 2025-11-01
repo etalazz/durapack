@@ -215,4 +215,3 @@ mod tests {
         assert_eq!(encoded.len(), MIN_HEADER_SIZE + 4 + 32);
     }
 }
-

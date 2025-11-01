@@ -1,11 +1,7 @@
 //! Example demonstrating recovery from damaged data
 
 use bytes::Bytes;
-use durapack_core::{
-    encoder::FrameBuilder,
-    scanner::scan_stream_with_stats,
-    linker::link_frames,
-};
+use durapack_core::{encoder::FrameBuilder, linker::link_frames, scanner::scan_stream_with_stats};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Durapack Damaged Data Recovery Example\n");
@@ -69,9 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 4: Reconstruct timeline
     println!("Step 4: Reconstructing timeline...");
-    let frames: Vec<_> = located_frames.into_iter()
-        .map(|lf| lf.frame)
-        .collect();
+    let frames: Vec<_> = located_frames.into_iter().map(|lf| lf.frame).collect();
 
     let timeline = link_frames(frames);
 
@@ -93,9 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Frame {}: {}", frame.header.frame_id, payload_str);
     }
 
-    println!("\n✓ Successfully recovered {}/{} frames despite damage!",
-        timeline.frames.len(), 10);
+    println!(
+        "\n✓ Successfully recovered {}/{} frames despite damage!",
+        timeline.frames.len(),
+        10
+    );
 
     Ok(())
 }
-

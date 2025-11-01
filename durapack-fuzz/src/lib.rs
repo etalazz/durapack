@@ -42,4 +42,3 @@ mod tests {
         fuzz_scan(&[0xFF; 1024]);
     }
 }
-

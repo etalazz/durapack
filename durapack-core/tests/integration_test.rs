@@ -2,10 +2,7 @@
 
 use bytes::Bytes;
 use durapack_core::{
-    encoder::FrameBuilder,
-    linker::link_frames,
-    scanner::scan_stream,
-    types::Frame,
+    encoder::FrameBuilder, linker::link_frames, scanner::scan_stream, types::Frame,
 };
 
 #[test]
@@ -166,4 +163,3 @@ fn create_test_frame(id: u64, prev_hash: [u8; 32], payload: &str) -> Frame {
         Bytes::from(payload.to_string()),
     )
 }
-

@@ -93,7 +93,10 @@ fn find_marker(data: &[u8]) -> Option<usize> {
 }
 
 /// Try to decode a frame at a specific offset
-fn try_decode_at_offset(data: &[u8], offset: usize) -> Result<LocatedFrame, crate::error::FrameError> {
+fn try_decode_at_offset(
+    data: &[u8],
+    offset: usize,
+) -> Result<LocatedFrame, crate::error::FrameError> {
     // Need at least minimum header size
     if offset + MIN_HEADER_SIZE > data.len() {
         return Err(crate::error::FrameError::IncompleteFrame {
@@ -320,4 +323,3 @@ mod tests {
         assert!(stats.recovery_rate() > 99.0); // Should be close to 100%
     }
 }
-

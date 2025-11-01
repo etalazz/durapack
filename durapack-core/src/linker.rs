@@ -61,10 +61,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
     }
 
     // Find first frame (prev_hash is all zeros)
-    let first_frames: Vec<_> = frame_map
-        .values()
-        .filter(|f| f.header.is_first())
-        .collect();
+    let first_frames: Vec<_> = frame_map.values().filter(|f| f.header.is_first()).collect();
 
     if first_frames.is_empty() {
         #[cfg(feature = "logging")]
@@ -97,19 +94,14 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
     // Follow the chain forward by looking for frames that reference the current frame
     loop {
         // Find the next frame (one that has prev_hash matching current_hash)
-        let next_frame = frame_map
-            .values()
-            .find(|f| {
-                !visited.contains_key(&f.header.frame_id) && f.header.prev_hash == current_hash
-            });
+        let next_frame = frame_map.values().find(|f| {
+            !visited.contains_key(&f.header.frame_id) && f.header.prev_hash == current_hash
+        });
 
         match next_frame {
             Some(frame) => {
                 #[cfg(feature = "logging")]
-                debug!(
-                    "Linked frame {} -> {}",
-                    current_id, frame.header.frame_id
-                );
+                debug!("Linked frame {} -> {}", current_id, frame.header.frame_id);
 
                 visited.insert(frame.header.frame_id, true);
                 ordered_frames.push(frame.clone());
@@ -275,24 +267,15 @@ mod tests {
     #[test]
     fn test_link_continuous_frames() {
         // Create a chain of frames
-        let frame1 = Frame::new(
-            FrameHeader::new(1, [0u8; 32], 4),
-            Bytes::from("test"),
-        );
+        let frame1 = Frame::new(FrameHeader::new(1, [0u8; 32], 4), Bytes::from("test"));
 
         let hash1 = frame1.compute_hash();
 
-        let frame2 = Frame::new(
-            FrameHeader::new(2, hash1, 4),
-            Bytes::from("test"),
-        );
+        let frame2 = Frame::new(FrameHeader::new(2, hash1, 4), Bytes::from("test"));
 
         let hash2 = frame2.compute_hash();
 
-        let frame3 = Frame::new(
-            FrameHeader::new(3, hash2, 4),
-            Bytes::from("test"),
-        );
+        let frame3 = Frame::new(FrameHeader::new(3, hash2, 4), Bytes::from("test"));
 
         let timeline = link_frames(vec![frame1, frame2, frame3]);
 
@@ -304,20 +287,14 @@ mod tests {
     #[test]
     fn test_link_with_gap() {
         // Create frames with a missing middle frame
-        let frame1 = Frame::new(
-            FrameHeader::new(1, [0u8; 32], 4),
-            Bytes::from("test"),
-        );
+        let frame1 = Frame::new(FrameHeader::new(1, [0u8; 32], 4), Bytes::from("test"));
 
         let hash1 = frame1.compute_hash();
 
         // Frame 2 is missing!
         let fake_hash2 = [1u8; 32];
 
-        let frame3 = Frame::new(
-            FrameHeader::new(3, fake_hash2, 4),
-            Bytes::from("test"),
-        );
+        let frame3 = Frame::new(FrameHeader::new(3, fake_hash2, 4), Bytes::from("test"));
 
         let timeline = link_frames(vec![frame1, frame3]);
 
@@ -332,24 +309,15 @@ mod tests {
     #[test]
     fn test_link_unordered_frames() {
         // Create frames and add them out of order
-        let frame1 = Frame::new(
-            FrameHeader::new(1, [0u8; 32], 4),
-            Bytes::from("test"),
-        );
+        let frame1 = Frame::new(FrameHeader::new(1, [0u8; 32], 4), Bytes::from("test"));
 
         let hash1 = frame1.compute_hash();
 
-        let frame2 = Frame::new(
-            FrameHeader::new(2, hash1, 4),
-            Bytes::from("test"),
-        );
+        let frame2 = Frame::new(FrameHeader::new(2, hash1, 4), Bytes::from("test"));
 
         let hash2 = frame2.compute_hash();
 
-        let frame3 = Frame::new(
-            FrameHeader::new(3, hash2, 4),
-            Bytes::from("test"),
-        );
+        let frame3 = Frame::new(FrameHeader::new(3, hash2, 4), Bytes::from("test"));
 
         // Add frames in reverse order
         let timeline = link_frames(vec![frame3, frame2, frame1]);
@@ -363,17 +331,11 @@ mod tests {
 
     #[test]
     fn test_verify_backlinks() {
-        let frame1 = Frame::new(
-            FrameHeader::new(1, [0u8; 32], 4),
-            Bytes::from("test"),
-        );
+        let frame1 = Frame::new(FrameHeader::new(1, [0u8; 32], 4), Bytes::from("test"));
 
         let hash1 = frame1.compute_hash();
 
-        let frame2 = Frame::new(
-            FrameHeader::new(2, hash1, 4),
-            Bytes::from("test"),
-        );
+        let frame2 = Frame::new(FrameHeader::new(2, hash1, 4), Bytes::from("test"));
 
         let timeline = Timeline {
             frames: vec![frame1, frame2],
@@ -385,4 +347,3 @@ mod tests {
         assert_eq!(errors.len(), 0);
     }
 }
-

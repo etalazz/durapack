@@ -123,7 +123,7 @@ fn test_workflow_missing_middle_frame() {
     let timeline = link_frames(frames);
 
     // Should detect a gap
-    assert!(timeline.gaps.len() >= 1);
+    assert!(!timeline.gaps.is_empty());
 }
 
 #[test]

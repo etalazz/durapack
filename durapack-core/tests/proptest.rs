@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use durapack_core::{
     decoder::decode_frame_from_bytes,
-    encoder::{encode_frame, FrameBuilder},
+    encoder::FrameBuilder,
     scanner::scan_stream,
     types::FrameHeader,
 };
@@ -90,7 +90,7 @@ proptest! {
         let located_frames = scan_stream(&stream);
 
         // We should recover at least 1 frame (usually more)
-        prop_assert!(located_frames.len() >= 1);
+        prop_assert!(!located_frames.is_empty());
     }
 
     #[test]

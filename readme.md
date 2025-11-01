@@ -5,7 +5,7 @@
     <strong>Frames that survive what the link and the disk don't.</strong>
   </p>
   <p>
-    <a href="https://github.com/etalazz/durapack/actions"><img src="https://github.com/etalazz/durapack/workflows/CI/badge.svg" alt="CI Status"></a>
+    <a href="https://github.com/etalazz/durapack/actions?query=workflow%3ACI"><img src="https://github.com/etalazz/durapack/workflows/CI/badge.svg" alt="CI Status"></a>
     <a href="https://crates.io/crates/durapack-core"><img src="https://img.shields.io/crates/v/durapack-core.svg" alt="Crates.io"></a>
     <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
   </p>
@@ -105,10 +105,101 @@ cargo install durapack-cli
 
 ### Commands
 
-- **`pack`**: Read JSON/CBOR → frames → file.
-- **`scan`**: Scan damaged file → print recovered frames as JSON.
+- **`pack`**: Read JSON/JSONL → frames → file.
+- **`scan`**: Scan damaged file → JSON/JSONL records of recovered frames.
 - **`verify`**: Check links, hashes, and report gaps.
-- **`timeline`**: Rethread and export ordered result.
+- **`timeline`**: Rethread and export ordered result (JSON or Graphviz DOT).
+
+### New CLI ergonomics
+
+- Stream-friendly I/O:
+  - All commands accept `-` for stdin and can write to stdout (e.g., `-o -`).
+  - `scan --jsonl` streams one JSON record per line: a Stats record, Gap records, then Frame records.
+- Packing flexibility:
+  - `pack --jsonl` reads one JSON object per line; `--chunk-strategy {jsonl|aggregate}` controls parsing.
+  - `pack --rate-limit <bytes/sec>` throttles output; `--progress` shows a progress bar.
+- Carving payloads:
+  - `scan --carve-payloads "payload_{stream}_{frame}.bin"` writes each recovered payload to disk.
+- Visualizing timelines:
+  - `timeline --dot -o -` emits Graphviz DOT; pipe to `dot` to render.
+
+### Examples (Windows cmd)
+
+```bat
+:: Pack JSONL from stdin to a file with BLAKE3 and a progress bar
+type data.jsonl | durapack pack -i - -o out.durp --blake3 --jsonl --progress
+
+:: Scan a file to JSON Lines on stdout and carve payloads
+Durapack scan -i out.durp --jsonl --carve-payloads "payload_{stream}_{frame}.bin" -o -
+
+:: Verify from stdin with colored output
+type out.durp | durapack verify -i - --report-gaps
+
+:: Timeline to DOT and render with Graphviz
+Durapack timeline -i out.durp --dot -o - | dot -Tpng -o timeline.png
+```
+
+### CLI reference (--help)
+
+Global options:
+
+- -v, --verbose  Enable verbose logging
+
+Subcommands and options:
+
+- pack
+  - -i, --input <FILE|->
+    Input JSON or JSONL file. Use "-" to read from stdin.
+  - -o, --output <FILE|->
+    Output file for packed frames. Use "-" to write to stdout.
+  - --blake3
+    Use BLAKE3 trailer instead of CRC32C.
+  - --start-id <u64> (default: 1)
+    Starting frame ID for the first frame.
+  - --jsonl (default: false)
+    Interpret input as JSON Lines (one JSON object per line).
+  - --chunk-strategy <jsonl|aggregate> (default: aggregate)
+    Parsing strategy when reading stdin/JSONL.
+  - --rate-limit <bytes/sec>
+    Throttle output to approximately this rate.
+  - --progress (default: false)
+    Show a progress bar during packing.
+
+- scan
+  - -i, --input <FILE|->
+    Input file to scan. Use "-" to read from stdin.
+  - -o, --output <FILE|->
+    Output file. With --jsonl, emits JSON Lines; otherwise pretty JSON. Use "-" to write to stdout.
+  - --stats-only
+    Print statistics only and exit.
+  - --jsonl (default: false)
+    Stream results as JSON Lines (records: Stats, Gap, Frame).
+  - --carve-payloads <pattern>
+    Write payloads to files; pattern may include {stream} and {frame}.
+
+- verify
+  - -i, --input <FILE|->
+    Input file to verify. Use "-" to read from stdin.
+  - --report-gaps
+    Also list detected gaps in the sequence.
+
+- timeline
+  - -i, --input <FILE|->
+    Input file with frames. Use "-" to read from stdin.
+  - -o, --output <FILE|->
+    Output JSON file for the timeline, or "-" for stdout.
+  - --include-orphans
+    Include orphaned frames in the JSON output.
+  - --dot (default: false)
+    Emit a Graphviz DOT graph instead of JSON (to file or stdout).
+
+Quick help
+
+- durapack --help
+- durapack pack --help
+- durapack scan --help
+- durapack verify --help
+- durapack timeline --help
 
 ---
 
@@ -136,7 +227,7 @@ Each frame consists of:
 - **Payload**: Application data.
 - **Trailer**: Optional CRC32C or BLAKE3 hash.
 
-> For a deep dive, see the [**Frame Specification**](docs/spec.md).
+> For a deep dive, see the [**Formal Specification (NEW)**](docs/FORMAL_SPEC.md) and [Frame Specification](docs/spec.md).
 
 ---
 
@@ -231,4 +322,3 @@ Licensed under either of:
 ## ⚖️ Export Control
 
 This software is subject to U.S. export laws and regulations. By downloading or using this software, you agree to comply with all applicable export laws and regulations.
-

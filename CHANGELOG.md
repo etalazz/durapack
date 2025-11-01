@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-11-01
+
+### Added
+- CLI ergonomics upgrade:
+  - JSONL I/O for `scan` (stream-friendly), emits stats, gaps, and frames as JSON Lines
+  - Stdin/stdout piping for `pack`, `scan`, `verify`, and `timeline` (use "-" as path)
+  - `pack`: `--jsonl`, `--chunk-strategy`, `--rate-limit`, `--progress`
+  - `scan`: `--jsonl` and `--carve-payloads "pattern_{stream}_{frame}.bin"`
+  - `timeline`: `--dot` to emit Graphviz DOT for visualization
+  - Colored diagnostics for `verify`
+- Test vectors: programmatic generator and validator for 13 vectors (clean + corruption cases)
+- Formal spec: documented versioned header, flags, link semantics, trailer variants, and corruption taxonomy
+
+### Changed
+- README updated with security scope (no encryption), export-control note, and docs links
+- Improved README badges and layout
+
+### Fixed
+- Clippy and rustfmt compliance across workspace; CI green
+- Test vector paths and generation order to avoid missing-file failures
+
 ## [0.1.0] - 2025-11-01 
 
 ### Added
@@ -23,9 +44,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BLAKE3 hash support for frame integrity
 - CRC32C checksum support
 - Maximum frame size enforcement
-
-## [0.1.0] - 2025-11-01
-
-### Added
-- First release
-

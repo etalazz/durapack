@@ -1,8 +1,16 @@
 mod commands;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum ChunkStrategy {
+    /// One JSON value per line
+    Jsonl,
+    /// Aggregate all inputs into a single JSON array
+    Aggregate,
+}
 
 #[derive(Parser)]
 #[command(name = "durapack")]
@@ -21,11 +29,11 @@ struct Cli {
 enum Commands {
     /// Pack data into Durapack frames
     Pack {
-        /// Input JSON file (array of payloads)
+        /// Input JSON/JSONL file ("-" for stdin)
         #[arg(short, long)]
         input: String,
 
-        /// Output file for packed frames
+        /// Output file for packed frames ("-" for stdout)
         #[arg(short, long)]
         output: String,
 
@@ -36,26 +44,50 @@ enum Commands {
         /// Starting frame ID
         #[arg(long, default_value = "1")]
         start_id: u64,
+
+        /// Interpret input as JSONL stream
+        #[arg(long, default_value_t = false)]
+        jsonl: bool,
+
+        /// Chunking strategy when reading stdin/JSONL
+        #[arg(long, value_enum, default_value_t = ChunkStrategy::Aggregate)]
+        chunk_strategy: ChunkStrategy,
+
+        /// Apply rate limit while writing (bytes/sec)
+        #[arg(long)]
+        rate_limit: Option<u64>,
+
+        /// Show a progress bar while packing
+        #[arg(long, default_value_t = false)]
+        progress: bool,
     },
 
     /// Scan damaged file and recover frames
     Scan {
-        /// Input file to scan
+        /// Input file to scan ("-" for stdin)
         #[arg(short, long)]
         input: String,
 
-        /// Output JSON file for recovered frames
+        /// Output JSON file ("-" for stdout). With --jsonl, emits JSON Lines.
         #[arg(short, long)]
         output: Option<String>,
 
         /// Show statistics only
         #[arg(long)]
         stats_only: bool,
+
+        /// Emit scan results as JSON Lines (JSONL)
+        #[arg(long, default_value_t = false)]
+        jsonl: bool,
+
+        /// Carve payloads to files; pattern may include {stream} and {frame}
+        #[arg(long)]
+        carve_payloads: Option<String>,
     },
 
     /// Verify frame integrity and back-links
     Verify {
-        /// Input file to verify
+        /// Input file to verify ("-" for stdin)
         #[arg(short, long)]
         input: String,
 
@@ -66,17 +98,21 @@ enum Commands {
 
     /// Reconstruct timeline from frames
     Timeline {
-        /// Input file with frames
+        /// Input file with frames ("-" for stdin)
         #[arg(short, long)]
         input: String,
 
-        /// Output JSON file for timeline
+        /// Output JSON file for timeline ("-" for stdout)
         #[arg(short, long)]
         output: String,
 
         /// Include orphaned frames
         #[arg(long)]
         include_orphans: bool,
+
+        /// Emit Graphviz DOT instead of JSON
+        #[arg(long, default_value_t = false)]
+        dot: bool,
     },
 }
 
@@ -102,13 +138,34 @@ fn main() -> Result<()> {
             output,
             blake3,
             start_id,
-        } => commands::pack::execute(&input, &output, blake3, start_id),
+            jsonl,
+            chunk_strategy,
+            rate_limit,
+            progress,
+        } => commands::pack::execute_ext(
+            &input,
+            &output,
+            blake3,
+            start_id,
+            jsonl,
+            chunk_strategy,
+            rate_limit,
+            progress,
+        ),
 
         Commands::Scan {
             input,
             output,
             stats_only,
-        } => commands::scan::execute(&input, output.as_deref(), stats_only),
+            jsonl,
+            carve_payloads,
+        } => commands::scan::execute_ext(
+            &input,
+            output.as_deref(),
+            stats_only,
+            jsonl,
+            carve_payloads.as_deref(),
+        ),
 
         Commands::Verify { input, report_gaps } => commands::verify::execute(&input, report_gaps),
 
@@ -116,6 +173,7 @@ fn main() -> Result<()> {
             input,
             output,
             include_orphans,
-        } => commands::timeline::execute(&input, &output, include_orphans),
+            dot,
+        } => commands::timeline::execute_ext(&input, &output, include_orphans, dot),
     }
 }

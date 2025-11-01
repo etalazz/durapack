@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use durapack_core::{linker::link_frames, scanner::scan_stream};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{self, Read, Write};
 use tracing::info;
 
 #[derive(Serialize, Deserialize)]
@@ -33,25 +34,34 @@ struct TimelineStats {
     continuity: f64,
 }
 
+#[allow(dead_code)]
 pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
+    execute_ext(input, output, include_orphans, false)
+}
+
+pub fn execute_ext(input: &str, output: &str, include_orphans: bool, dot: bool) -> Result<()> {
     info!("Reconstructing timeline from: {}", input);
 
-    // Read input file
-    let data = fs::read(input).with_context(|| format!("Failed to read input file: {}", input))?;
+    // Read input ("-" for stdin)
+    let data = if input == "-" {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        buf
+    } else {
+        fs::read(input).with_context(|| format!("Failed to read input file: {}", input))?
+    };
 
     // Scan for frames
     let located_frames = scan_stream(&data);
 
     if located_frames.is_empty() {
-        anyhow::bail!("No valid frames found in input file");
+        bail!("No valid frames found in input");
     }
 
     info!("Found {} frames", located_frames.len());
 
-    // Extract frames
+    // Extract frames and link
     let frames: Vec<_> = located_frames.into_iter().map(|lf| lf.frame).collect();
-
-    // Link frames into timeline
     let timeline = link_frames(frames);
 
     info!(
@@ -61,7 +71,44 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
         timeline.orphans.len()
     );
 
-    // Convert to output format
+    if dot {
+        // Emit Graphviz DOT representation
+        let mut out: Box<dyn Write> = if output == "-" {
+            Box::new(io::stdout())
+        } else {
+            Box::new(fs::File::create(output)?)
+        };
+
+        writeln!(&mut out, "digraph timeline {{")?;
+        writeln!(&mut out, "  rankdir=LR;")?;
+        // Nodes
+        for f in &timeline.frames {
+            writeln!(
+                &mut out,
+                "  {} [label=\"{}\"];",
+                f.header.frame_id, f.header.frame_id
+            )?;
+        }
+        // Edges (by order)
+        for win in timeline.frames.windows(2) {
+            let a = win[0].header.frame_id;
+            let b = win[1].header.frame_id;
+            writeln!(&mut out, "  {} -> {};", a, b)?;
+        }
+        // Gaps as dashed edges
+        for g in &timeline.gaps {
+            writeln!(
+                &mut out,
+                "  {} -> {} [style=dashed, color=red, label=\"gap\"];",
+                g.before, g.after
+            )?;
+        }
+        writeln!(&mut out, "}}")?;
+
+        return Ok(());
+    }
+
+    // JSON output path
     let frames_output: Vec<TimelineFrame> = timeline
         .frames
         .iter()
@@ -110,18 +157,24 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
         stats: stats_output,
     };
 
-    // Write output
     let json = serde_json::to_string_pretty(&output_data)
         .with_context(|| "Failed to serialize timeline")?;
 
-    fs::write(output, json).with_context(|| format!("Failed to write output file: {}", output))?;
+    if output == "-" {
+        println!("{}", json);
+    } else {
+        fs::write(output, json)
+            .with_context(|| format!("Failed to write output file: {}", output))?;
+    }
 
     println!("\n=== Timeline Reconstruction ===");
     println!("Ordered frames:  {}", output_data.frames.len());
     println!("Gaps detected:   {}", output_data.gaps.len());
     println!("Orphaned frames: {}", output_data.orphans.len());
     println!("Continuity:      {:.2}%", output_data.stats.continuity);
-    println!("\nTimeline written to: {}", output);
+    if output != "-" {
+        println!("\nTimeline written to: {}", output);
+    }
 
     Ok(())
 }

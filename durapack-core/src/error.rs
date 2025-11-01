@@ -23,11 +23,21 @@ pub enum FrameError {
 
     /// Incomplete frame - not enough data
     #[error("Incomplete frame: expected {expected} bytes, got {actual}")]
-    IncompleteFrame { expected: usize, actual: usize },
+    IncompleteFrame {
+        /// The number of bytes expected.
+        expected: usize,
+        /// The number of bytes actually found.
+        actual: usize,
+    },
 
     /// Checksum mismatch
     #[error("Checksum mismatch: expected {expected:x}, got {actual:x}")]
-    ChecksumMismatch { expected: u32, actual: u32 },
+    ChecksumMismatch {
+        /// The expected checksum.
+        expected: u32,
+        /// The actual checksum calculated.
+        actual: u32,
+    },
 
     /// Hash mismatch
     #[error("Hash mismatch")]

@@ -162,7 +162,8 @@ Run benchmarks: `cargo bench -p durapack-core`
 
 ## 📚 Documentation
 
-- [Frame Specification](docs/spec.md)
+- [**Formal Specification (NEW)**](docs/FORMAL_SPEC.md) - Complete on-disk format specification
+- [Frame Specification](docs/spec.md) - Original specification document
 - [Quick Start Guide](QUICKSTART.md)
 - [FAQ - Frequently Asked Questions](FAQ.md)
 - [API Documentation](https://docs.rs/durapack-core)

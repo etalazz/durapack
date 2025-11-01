@@ -220,3 +220,10 @@ Licensed under either of:
 ---
 
 **Status**: Prototype / Research. Use in production systems at your own risk.
+
+---
+
+## ⚖️ Export Control
+
+This software is subject to U.S. export laws and regulations. By downloading or using this software, you agree to comply with all applicable export laws and regulations.
+

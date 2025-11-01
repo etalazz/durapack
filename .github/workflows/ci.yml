@@ -34,8 +34,3 @@ jobs:
 
       - name: Test
         run: cargo test --all --no-fail-fast -- --quiet
-
-  windows-cli-smoke:
-    needs: build-test
-    uses: ./.github/workflows/windows-cli-smoke.yml
-

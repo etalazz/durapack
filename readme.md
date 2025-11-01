@@ -15,6 +15,10 @@
 
 Durapack is a Rust library for encoding telemetry, audit, or mission data so that it remains **recoverable even when the storage or link is damaged**. Each Durapack record ("frame") is **self-locating** (has a strong marker), **self-describing** (carries its own header/length), and **bidirectionally linkable** (can be re-threaded using IDs or hashes).
 
+### 🛡️ A Note on Security and Scope
+
+Durapack is a general-purpose framing and data repair library. It **does not provide encryption**. If you need to protect data at rest or in transit, you should encrypt your payload *before* passing it to Durapack.
+
 ## 📖 Table of Contents
 
 - [✨ Features](#-features)

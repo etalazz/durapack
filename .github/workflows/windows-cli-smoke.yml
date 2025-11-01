@@ -28,7 +28,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build workspace
-        run: cargo build --all --locked
+        run: cargo build --all
 
       - name: Run CLI smoke test script (PowerShell)
         shell: pwsh
@@ -41,4 +41,3 @@ jobs:
         with:
           name: cli-smoke-outputs
           path: scripts/out/
-

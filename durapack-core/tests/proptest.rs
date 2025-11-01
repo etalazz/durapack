@@ -2,9 +2,7 @@
 
 use bytes::Bytes;
 use durapack_core::{
-    decoder::decode_frame_from_bytes,
-    encoder::FrameBuilder,
-    scanner::scan_stream,
+    decoder::decode_frame_from_bytes, encoder::FrameBuilder, scanner::scan_stream,
     types::FrameHeader,
 };
 use proptest::prelude::*;

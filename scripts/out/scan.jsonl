@@ -1,0 +1,4 @@
+{"type":"stats","bytes_scanned":267,"markers_found":3,"frames_found":3,"decode_failures":0,"bytes_recovered":267,"recovery_rate":100.0}
+{"type":"frame","offset":0,"frame_id":1,"payload_len":7,"size":89,"payload":"{\"k\":1}","confidence":1.0}
+{"type":"frame","offset":89,"frame_id":2,"payload_len":7,"size":89,"payload":"{\"k\":2}","confidence":1.0}
+{"type":"frame","offset":178,"frame_id":3,"payload_len":7,"size":89,"payload":"{\"k\":3}","confidence":1.0}

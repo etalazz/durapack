@@ -67,7 +67,7 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
         .iter()
         .map(|f| TimelineFrame {
             frame_id: f.header.frame_id,
-            prev_hash: hex::encode(&f.header.prev_hash),
+            prev_hash: hex::encode(f.header.prev_hash),
             payload: String::from_utf8_lossy(&f.payload).to_string(),
         })
         .collect();
@@ -78,7 +78,7 @@ pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
             .iter()
             .map(|f| TimelineFrame {
                 frame_id: f.header.frame_id,
-                prev_hash: hex::encode(&f.header.prev_hash),
+                prev_hash: hex::encode(f.header.prev_hash),
                 payload: String::from_utf8_lossy(&f.payload).to_string(),
             })
             .collect()

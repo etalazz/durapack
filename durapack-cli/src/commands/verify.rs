@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use durapack_core::{
-    decoder::decode_frame_from_bytes,
     linker::{link_frames, verify_backlinks},
     scanner::scan_stream,
 };

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use durapack_core::scanner::{scan_stream_with_stats, LocatedFrame};
+use durapack_core::scanner::scan_stream_with_stats;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use tracing::info;

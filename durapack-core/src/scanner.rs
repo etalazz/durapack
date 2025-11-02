@@ -237,7 +237,11 @@ pub fn scan_stream_zero_copy(buf: Bytes) -> Vec<LocatedFrame> {
                     let end = at + loc.size;
                     let slice = buf.slice(start..end);
                     if let Ok(frame) = crate::decoder::decode_frame_from_bytes_zero_copy(slice) {
-                        results.push(LocatedFrame { offset: at, size: loc.size, frame });
+                        results.push(LocatedFrame {
+                            offset: at,
+                            size: loc.size,
+                            frame,
+                        });
                         pos = end;
                         continue;
                     }

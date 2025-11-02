@@ -4,6 +4,7 @@ use crate::constants::{FRAME_MARKER, MAX_FRAME_SIZE, MIN_HEADER_SIZE};
 use crate::decoder::decode_frame_from_bytes;
 use crate::types::Frame;
 use bytes::Bytes;
+use alloc::vec::Vec;
 
 #[cfg(feature = "logging")]
 use tracing::{debug, warn};
@@ -63,9 +64,9 @@ pub fn scan_stream(data: &[u8]) -> Vec<LocatedFrame> {
                     pos = absolute_pos + located_frame.size;
                     results.push(located_frame);
                 }
-                Err(e) => {
+                Err(_e) => {
                     #[cfg(feature = "logging")]
-                    warn!("Failed to decode frame at offset {}: {}", absolute_pos, e);
+                    warn!("Failed to decode frame at offset {}: {}", absolute_pos, _e);
 
                     // Move past this marker and continue searching
                     pos = absolute_pos + FRAME_MARKER.len();

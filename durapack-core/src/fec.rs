@@ -5,6 +5,8 @@
 
 use crate::error::FrameError;
 use crate::types::Frame;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 /// A Forward Error Correction block
 #[derive(Debug, Clone, PartialEq)]

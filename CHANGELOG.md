@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2025-11-02
+
+### Added
+- `no_std` + `alloc` support for `durapack-core`:
+  - New `std` feature (ON by default) gates I/O-based decode APIs and conveniences
+  - Core works in `no_std` environments with `alloc` for Bytes/Vec usage
+  - Dependencies configured for `no_std`: `blake3`, `bytes(alloc)`, `crc32c`, `memchr`
+
+### Changed
+- `decoder` now exposes `decode_frame_from_bytes` and zero-copy `decode_frame_from_bytes_zero_copy` in `no_std`.
+- `decode_frame<R: Read>` and `try_decode_frame` are available only with `std` feature.
+
+### Notes
+- To build without std: `cargo build -p durapack-core --no-default-features`
+- To build with std explicitly: `cargo build -p durapack-core --features std`
+
 ## [0.2.1] - 2025-11-02
 
 ### Added

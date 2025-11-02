@@ -12,7 +12,10 @@
 //! - `linker`: Bidirectional timeline reconstruction
 //! - `fec`: Forward Error Correction traits (interface only)
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
+
+extern crate alloc;
 
 pub mod constants;
 pub mod decoder;
@@ -28,4 +31,4 @@ pub use error::FrameError;
 pub use types::{DurapackSerializable, Frame, FrameHeader};
 
 /// Result type alias for Durapack operations
-pub type Result<T> = std::result::Result<T, FrameError>;
+pub type Result<T> = core::result::Result<T, FrameError>;

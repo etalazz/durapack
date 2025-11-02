@@ -8,13 +8,14 @@ repository.workspace = true
 description = "Core library for Durapack self-locating framing format"
 
 [dependencies]
-serde.workspace = true
-thiserror.workspace = true
-blake3.workspace = true
-bytes.workspace = true
-crc32c.workspace = true
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+thiserror = { version = "1.0", optional = true }
+blake3 = { version = "1.5", default-features = false }
+bytes = { version = "1.10.1", default-features = false }
+crc32c = { version = "0.6", default-features = false }
 tracing = { workspace = true, optional = true }
-memchr = "2"
+memchr = { version = "2", default-features = false }
+hashbrown = { version = "0.14", default-features = false }
 
 [dev-dependencies]
 proptest.workspace = true
@@ -22,7 +23,14 @@ criterion.workspace = true
 hex = "0.4"
 
 [features]
-default = ["logging"]
+# Default to std for convenient I/O and collections
+default = ["std", "logging"]
+# std enables dependent crates' std features
+std = [
+  "blake3/std",
+  "thiserror",
+]
+# logging uses tracing; tracing works in no_std with core support
 logging = ["tracing"]
 
 [[example]]

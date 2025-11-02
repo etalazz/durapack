@@ -6,6 +6,7 @@ use crate::constants::{
 use crate::error::FrameError;
 use crate::types::{Frame, FrameHeader};
 use bytes::Bytes;
+#[cfg(feature = "std")]
 use std::io::{ErrorKind, Read};
 
 /// Decode a frame from a reader
@@ -17,6 +18,7 @@ use std::io::{ErrorKind, Read};
 /// - Validates checksum/hash if present
 ///
 /// Returns an error if any validation fails.
+#[cfg(feature = "std")]
 pub fn decode_frame<R: Read>(reader: &mut R) -> Result<Frame, FrameError> {
     // Read and validate marker
     let mut marker = [0u8; 4];
@@ -125,8 +127,16 @@ pub fn decode_frame<R: Read>(reader: &mut R) -> Result<Frame, FrameError> {
 
 /// Decode a frame from a byte slice
 pub fn decode_frame_from_bytes(data: &[u8]) -> Result<Frame, FrameError> {
-    let mut cursor = std::io::Cursor::new(data);
-    decode_frame(&mut cursor)
+    #[cfg(feature = "std")]
+    {
+        let mut cursor = std::io::Cursor::new(data);
+        decode_frame(&mut cursor)
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        // In no_std, parse like zero-copy path but clone into Bytes for payload to keep API parity
+        decode_frame_from_bytes_zero_copy(Bytes::copy_from_slice(data))
+    }
 }
 
 /// Decode a frame from a byte buffer without copying payload/trailer
@@ -267,6 +277,7 @@ pub fn decode_frame_from_bytes_zero_copy(buf: Bytes) -> Result<Frame, FrameError
 ///
 /// This is useful for stream processing where you want to know how much
 /// to advance the read position.
+#[cfg(feature = "std")]
 pub fn try_decode_frame<R: Read>(reader: &mut R) -> Result<(Frame, usize), FrameError> {
     let mut bytes_read = 0;
 

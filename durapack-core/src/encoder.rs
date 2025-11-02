@@ -4,6 +4,7 @@ use crate::constants::{FrameFlags, TrailerType, FRAME_MARKER, MIN_HEADER_SIZE};
 use crate::error::FrameError;
 use crate::types::{Frame, FrameHeader};
 use bytes::{BufMut, Bytes, BytesMut};
+use alloc::format;
 
 /// Encode a frame into bytes
 ///

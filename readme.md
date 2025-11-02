@@ -9,6 +9,7 @@
     <a href="https://github.com/etalazz/durapack/actions/workflows/windows-cli-smoke.yml"><img src="https://github.com/etalazz/durapack/actions/workflows/windows-cli-smoke.yml/badge.svg?branch=main" alt="Windows CLI Smoke"></a>
     <a href="https://crates.io/crates/durapack-core"><img src="https://img.shields.io/crates/v/durapack-core.svg" alt="Crates.io"></a>
     <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
+    <a href="https://github.com/sponsors/etalazz"><img src="https://img.shields.io/badge/sponsor-%E2%9D%A4-red" alt="Sponsor"></a>
   </p>
 </div>
 
@@ -43,6 +44,9 @@ Durapack is a general-purpose framing and data repair library. It **does not pro
 - **Local decodability**: Parse a single frame without external schema files.
 - **Bidirectional reconstruction**: Reassemble timelines using forward/back references.
 - **FEC-ready layout**: Payload kept separable for erasure coding.
+- **Zero-copy core paths**: Bytes/BytesMut across encoder/decoder/scanner to avoid extra copies.
+- **SIMD-accelerated scanner**: memchr/memmem-backed marker search (auto-uses SSE2/AVX2/NEON).
+- **no_std + alloc**: `durapack-core` builds without `std`; enable `std` feature for I/O convenience.
 - **Small, auditable core**: Minimal dependencies, pure Rust.
 
 ## 🎯 Use Cases
@@ -92,6 +96,21 @@ let damaged_data = std::fs::read("damaged.durp")?;
 let located_frames = scan_stream(&damaged_data);
 
 println!("Recovered {} frames from damaged file", located_frames.len());
+```
+
+### Build features and no_std
+
+- Default build (with `std`): includes convenient I/O helpers and richer error Display via `thiserror`.
+- Embedded/firmware (`no_std + alloc`): core works without `std`.
+
+Commands:
+
+```bat
+:: Build core without std
+cargo build -p durapack-core --no-default-features
+
+:: Build core with std explicitly
+cargo build -p durapack-core --features std
 ```
 
 ---
@@ -234,15 +253,16 @@ Each frame consists of:
 
 ## ⏱️ Performance
 
-Benchmarks on an Intel i7-10700K:
+- Zero-copy encoder/decoder/scanner paths using Bytes/BytesMut.
+- SIMD-accelerated marker search via memchr::memmem (auto-dispatch to SSE2/AVX2/NEON).
+- Criterion benches with realistic corpora (scanner + encoding).
 
-| Operation | Size | Throughput |
-|-----------|------|------------|
-| Encode    | 1KB  | ~800 MB/s  |
-| Decode    | 1KB  | ~850 MB/s  |
-| Scan      | 10MB | ~600 MB/s  |
+Run benchmarks:
 
-Run benchmarks: `cargo bench -p durapack-core`
+```bat
+cargo bench -p durapack-core --bench scanner
+cargo bench -p durapack-core --bench encoding
+```
 
 ## ✅ Testing
 

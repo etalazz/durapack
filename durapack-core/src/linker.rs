@@ -4,7 +4,9 @@ use crate::constants::BLAKE3_HASH_SIZE;
 use crate::error::FrameError;
 use crate::scanner::LocatedFrame;
 use crate::types::Frame;
-use std::collections::HashMap;
+use alloc::collections::BTreeMap;
+use alloc::vec;
+use alloc::vec::Vec;
 
 #[cfg(feature = "logging")]
 use tracing::{debug, warn};
@@ -55,7 +57,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
     }
 
     // Build lookup table
-    let mut frame_map: HashMap<u64, Frame> = HashMap::new();
+    let mut frame_map: BTreeMap<u64, Frame> = BTreeMap::new();
     for frame in frames {
         frame_map.insert(frame.header.frame_id, frame);
     }
@@ -85,7 +87,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
 
     let mut ordered_frames = vec![first_frame.clone()];
     let mut gaps = Vec::new();
-    let mut visited = HashMap::new();
+    let mut visited: BTreeMap<u64, bool> = BTreeMap::new();
     visited.insert(first_frame.header.frame_id, true);
 
     let mut current_hash = first_frame.compute_hash();
@@ -167,7 +169,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
 }
 
 /// Reconstruct timeline when no first frame is available
-fn reconstruct_without_first(frame_map: HashMap<u64, Frame>) -> Timeline {
+fn reconstruct_without_first(frame_map: BTreeMap<u64, Frame>) -> Timeline {
     let mut frames: Vec<_> = frame_map.into_values().collect();
     frames.sort_by_key(|f| f.header.frame_id);
 

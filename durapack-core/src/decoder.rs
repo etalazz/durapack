@@ -129,6 +129,140 @@ pub fn decode_frame_from_bytes(data: &[u8]) -> Result<Frame, FrameError> {
     decode_frame(&mut cursor)
 }
 
+/// Decode a frame from a byte buffer without copying payload/trailer
+///
+/// The input `buf` must contain exactly one complete frame
+/// (marker + header + payload + optional trailer). The returned
+/// `Frame` will borrow slices from `buf` for payload/trailer.
+pub fn decode_frame_from_bytes_zero_copy(buf: Bytes) -> Result<Frame, FrameError> {
+    // Sanity: minimum header
+    if buf.len() < MIN_HEADER_SIZE {
+        return Err(FrameError::IncompleteFrame {
+            expected: MIN_HEADER_SIZE,
+            actual: buf.len(),
+        });
+    }
+
+    // Validate marker
+    if &buf[0..4] != FRAME_MARKER {
+        let mut bad = [0u8; 4];
+        bad.copy_from_slice(&buf[0..4]);
+        return Err(FrameError::BadMarker(bad));
+    }
+
+    // Header view (excluding marker)
+    let header_bytes = &buf[4..MIN_HEADER_SIZE];
+
+    let version = header_bytes[0];
+    if version != PROTOCOL_VERSION {
+        return Err(FrameError::UnsupportedVersion(version));
+    }
+
+    let frame_id = u64::from_be_bytes([
+        header_bytes[1],
+        header_bytes[2],
+        header_bytes[3],
+        header_bytes[4],
+        header_bytes[5],
+        header_bytes[6],
+        header_bytes[7],
+        header_bytes[8],
+    ]);
+
+    let mut prev_hash = [0u8; 32];
+    prev_hash.copy_from_slice(&header_bytes[9..41]);
+
+    let payload_len = u32::from_be_bytes([
+        header_bytes[41],
+        header_bytes[42],
+        header_bytes[43],
+        header_bytes[44],
+    ]);
+
+    let flags = FrameFlags::new(header_bytes[45]);
+
+    // Validate lengths and compute total size
+    let trailer_size = flags.trailer_type().size();
+    let total_frame_size = MIN_HEADER_SIZE + payload_len as usize + trailer_size;
+    if total_frame_size > MAX_FRAME_SIZE as usize {
+        return Err(FrameError::FrameTooLarge(
+            total_frame_size as u32,
+            MAX_FRAME_SIZE,
+        ));
+    }
+    if buf.len() < total_frame_size {
+        return Err(FrameError::IncompleteFrame {
+            expected: total_frame_size,
+            actual: buf.len(),
+        });
+    }
+
+    // Build header and validate
+    let header = FrameHeader::with_flags(frame_id, prev_hash, payload_len, flags);
+    header.validate()?;
+
+    // Slice payload and trailer
+    let payload_start = MIN_HEADER_SIZE;
+    let payload_end = payload_start + payload_len as usize;
+    let trailer_start = payload_end;
+    let trailer_end = trailer_start + trailer_size;
+
+    // Validate trailer without copying: compute over marker+header+payload slice
+    let main_slice = &buf[0..payload_end];
+    let trailer_type = flags.trailer_type();
+    let trailer_bytes = if trailer_size > 0 {
+        &buf[trailer_start..trailer_end]
+    } else {
+        &[][..]
+    };
+
+    match trailer_type {
+        TrailerType::None => {}
+        TrailerType::Crc32c => {
+            if trailer_bytes.len() != 4 {
+                return Err(FrameError::IncompleteFrame {
+                    expected: payload_end + 4,
+                    actual: buf.len(),
+                });
+            }
+            let expected = u32::from_be_bytes([
+                trailer_bytes[0],
+                trailer_bytes[1],
+                trailer_bytes[2],
+                trailer_bytes[3],
+            ]);
+            let actual = crc32c::crc32c(main_slice);
+            if actual != expected {
+                return Err(FrameError::ChecksumMismatch { expected, actual });
+            }
+        }
+        TrailerType::Blake3 => {
+            if trailer_bytes.len() != 32 {
+                return Err(FrameError::IncompleteFrame {
+                    expected: payload_end + 32,
+                    actual: buf.len(),
+                });
+            }
+            let actual = blake3::hash(main_slice);
+            if actual.as_bytes() != trailer_bytes {
+                return Err(FrameError::HashMismatch);
+            }
+        }
+    }
+
+    // Construct zero-copy frame
+    let payload = buf.slice(payload_start..payload_end);
+    let frame = match trailer_type {
+        TrailerType::None => Frame::new(header, payload),
+        _ => {
+            let trailer = buf.slice(trailer_start..trailer_end);
+            Frame::with_trailer(header, payload, trailer)
+        }
+    };
+
+    Ok(frame)
+}
+
 /// Try to decode a frame, returning the number of bytes consumed
 ///
 /// This is useful for stream processing where you want to know how much

@@ -3,6 +3,7 @@
 use crate::constants::{FRAME_MARKER, MAX_FRAME_SIZE, MIN_HEADER_SIZE};
 use crate::decoder::decode_frame_from_bytes;
 use crate::types::Frame;
+use bytes::Bytes;
 
 #[cfg(feature = "logging")]
 use tracing::{debug, warn};
@@ -88,6 +89,13 @@ pub fn scan_stream(data: &[u8]) -> Vec<LocatedFrame> {
 
 /// Find the next occurrence of the frame marker
 fn find_marker(data: &[u8]) -> Option<usize> {
+    // Fast substring search; memchr dispatches to optimized backends (SSE2/AVX2/NEON)
+    if data.len() >= FRAME_MARKER.len() {
+        if let Some(pos) = memchr::memmem::find(data, FRAME_MARKER) {
+            return Some(pos);
+        }
+    }
+    // Fallback: naive window scan
     data.windows(FRAME_MARKER.len())
         .position(|window| window == FRAME_MARKER)
 }
@@ -213,6 +221,36 @@ pub fn scan_stream_with_stats(data: &[u8]) -> (Vec<LocatedFrame>, ScanStats) {
     stats.frames_found = results.len();
 
     (results, stats)
+}
+
+/// Scan a byte buffer (Bytes) and return zero-copy frames by slicing
+pub fn scan_stream_zero_copy(buf: Bytes) -> Vec<LocatedFrame> {
+    let mut results = Vec::new();
+    let mut pos = 0;
+    while pos < buf.len() {
+        if let Some(rel) = find_marker(&buf[pos..]) {
+            let at = pos + rel;
+            // Fast path: compute total size to slice just once
+            match try_decode_at_offset(&buf, at) {
+                Ok(loc) => {
+                    let start = at;
+                    let end = at + loc.size;
+                    let slice = buf.slice(start..end);
+                    if let Ok(frame) = crate::decoder::decode_frame_from_bytes_zero_copy(slice) {
+                        results.push(LocatedFrame { offset: at, size: loc.size, frame });
+                        pos = end;
+                        continue;
+                    }
+                    // Fallback to advancing by marker if zero-copy decode failed unexpectedly
+                    pos = at + FRAME_MARKER.len();
+                }
+                Err(_) => pos = at + FRAME_MARKER.len(),
+            }
+        } else {
+            break;
+        }
+    }
+    results
 }
 
 #[cfg(test)]

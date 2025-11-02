@@ -14,6 +14,7 @@ blake3.workspace = true
 bytes.workspace = true
 crc32c.workspace = true
 tracing = { workspace = true, optional = true }
+memchr = "2"
 
 [dev-dependencies]
 proptest.workspace = true
@@ -36,3 +37,6 @@ path = "../examples/damaged_recovery.rs"
 name = "encoding"
 harness = false
 
+[[bench]]
+name = "scanner"
+harness = false

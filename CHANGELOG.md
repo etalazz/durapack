@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-11-02
+
+### Added
+- Performance hygiene in core:
+  - Zero-copy decoder: `decode_frame_from_bytes_zero_copy(Bytes)` slices payload/trailer without allocating
+  - Zero-copy scanner: `scan_stream_zero_copy(Bytes)` produces frames by slicing a shared buffer
+  - SIMD-accelerated marker search via `memchr::memmem` for fast frame marker detection
+- Criterion benches:
+  - New `scanner` benchmark with realistic corpora (multiple frames, interspersed garbage) and throughput reporting
+- Windows CI:
+  - Dedicated workflow `windows-cli-smoke.yml` running `scripts/test-cli.ps1` to exercise all CLI commands
+- Scripts:
+  - `scripts/test-cli.ps1` PowerShell smoke test and `scripts/README.md` usage guide
+
+### Changed
+- CLI `scan` now uses zero-copy scanning in `--jsonl` mode to reduce copies and improve throughput
+- README:
+  - Added a comprehensive "CLI reference (--help)" section
+  - Added CI badges for Linux CI and Windows CLI smoke
+  - Documented Continuous Integration and local smoke test run command
+
+### Fixed
+- GitHub Actions: removed `--locked` in Windows smoke job to prevent lockfile update failures on fresh runners
+- CI config: avoided calling non-reusable workflow; split Linux CI and Windows smoke into separate workflows
+- Clippy warning cleanup and formatting across new benches and CLI changes
+
 ## [0.2.0] - 2025-11-01
 
 ### Added

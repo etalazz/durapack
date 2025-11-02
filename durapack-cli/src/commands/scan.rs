@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
-use durapack_core::{linker::link_frames, scanner::scan_stream_with_stats};
+use durapack_core::linker::link_frames;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use tracing::info;
+use bytes::Bytes;
 
 #[derive(Serialize, Deserialize)]
 struct RecoveredFrame {
@@ -70,7 +71,14 @@ pub fn execute_ext(
     info!("Input size: {} bytes", data.len());
 
     // Scan with statistics
-    let (located_frames, stats) = scan_stream_with_stats(&data);
+    let (located_frames, stats) = if jsonl {
+        // zero-copy scan still needs stats: compute using slice path for stats, emit frames from zero-copy path
+        let zc = durapack_core::scanner::scan_stream_zero_copy(Bytes::from(data.clone()));
+        let (_, st) = durapack_core::scanner::scan_stream_with_stats(&data);
+        (zc, st)
+    } else {
+        durapack_core::scanner::scan_stream_with_stats(&data)
+    };
 
     if jsonl {
         // Prepare writer (stdout or file)

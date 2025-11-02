@@ -87,6 +87,12 @@ impl FrameFlags {
     /// Frame encoded with a robust sync word before the marker
     pub const HAS_SYNC_PREFIX: u8 = 0b0010_0000;
 
+    /// Frame encoded as a superframe (contains an index in payload)
+    pub const IS_SUPERFRAME: u8 = 0b0100_0000;
+
+    /// Frame payload carries optional logarithmic skip-list backlinks
+    pub const HAS_SKIPLIST: u8 = 0b1000_0000;
+
     /// Create new flags from raw byte
     pub const fn new(flags: u8) -> Self {
         Self(flags)
@@ -115,6 +121,26 @@ impl FrameFlags {
     /// Check if this is the last frame
     pub const fn is_last(&self) -> bool {
         (self.0 & Self::IS_LAST) != 0
+    }
+
+    /// Check if a preamble prefix is present
+    pub const fn has_preamble(&self) -> bool {
+        (self.0 & Self::HAS_PREAMBLE) != 0
+    }
+
+    /// Check if a robust sync prefix is present
+    pub const fn has_sync_prefix(&self) -> bool {
+        (self.0 & Self::HAS_SYNC_PREFIX) != 0
+    }
+
+    /// Check if this frame is a superframe
+    pub const fn is_superframe(&self) -> bool {
+        (self.0 & Self::IS_SUPERFRAME) != 0
+    }
+
+    /// Check if skip-list backlinks are carried in the payload
+    pub const fn has_skiplist(&self) -> bool {
+        (self.0 & Self::HAS_SKIPLIST) != 0
     }
 
     /// Get the trailer type

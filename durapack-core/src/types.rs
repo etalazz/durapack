@@ -90,6 +90,38 @@ pub struct Frame {
 
     /// Optional trailer (checksum or hash)
     pub trailer: Option<Bytes>,
+
+    /// Optional superframe index embedded in the payload of superframes
+    pub super_index: Option<SuperframeIndex>,
+
+    /// Optional skip-list backlinks present in payload
+    pub skip_links: Option<alloc::vec::Vec<SkipLink>>,
+}
+
+/// Optional superframe index embedded in the payload of superframes
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuperframeIndex {
+    /// Frame ID range summarized by this superframe (inclusive)
+    pub range_start: u64,
+    /// End of the summarized frame ID range (inclusive)
+    pub range_end: u64,
+    /// Recent frame IDs (last N) for quick local resync
+    pub recent_ids: alloc::vec::Vec<u64>,
+    /// Byte offsets of frames relative to the superframe position (best-effort)
+    pub offsets: alloc::vec::Vec<u32>,
+    /// Checksums of summarized frames for validation (e.g., CRC32C)
+    pub checksums: alloc::vec::Vec<u32>,
+}
+
+/// Optional skip-list backlink entry enabling O(log n) seeks
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkipLink {
+    /// Exponent distance (2^k frames back)
+    pub level: u8,
+    /// Target frame ID
+    pub target_id: u64,
+    /// Optional hint (e.g., relative offset)
+    pub hint: Option<u32>,
 }
 
 impl Frame {
@@ -99,6 +131,8 @@ impl Frame {
             header,
             payload,
             trailer: None,
+            super_index: None,
+            skip_links: None,
         }
     }
 
@@ -108,6 +142,8 @@ impl Frame {
             header,
             payload,
             trailer: Some(trailer),
+            super_index: None,
+            skip_links: None,
         }
     }
 

@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optional preamble (`PREAMBLE_PATTERN`) with `MIN_PREAMBLE_LEN` to help resync after burst errors
   - Bounded-distance Hamming matching for the 4-byte `FRAME_MARKER` (`MAX_MARKER_HAMMING`) to tolerate small bit flips
   - New `FrameFlags` bits: `HAS_PREAMBLE` and `HAS_SYNC_PREFIX`
+- Superframes and skip lists:
+  - New `FrameFlags` bits: `IS_SUPERFRAME`, `HAS_SKIPLIST`
+  - `FrameBuilder` helpers: `.as_superframe()`, `.with_skiplist()`
+  - Types to carry superframe index and skip links in payload: `SuperframeIndex`, `SkipLink`
+  - `Timeline::seek_with_skiplist` helper to leverage backlinks for O(log n) seeks when present
 
 ### Changed
 - Scanner search pipeline now tries: exact match → sync/preamble-assisted resync → bounded-Hamming fallback

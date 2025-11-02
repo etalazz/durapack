@@ -387,3 +387,27 @@ let encoded = FrameBuilder::new(1)
 Notes:
 - Defaults remain unchanged; no extra bytes are added unless you enable the flags.
 - The scanner automatically benefits from sync/preamble if present.
+
+---
+
+## 📇 Superframes and skip lists (optional)
+
+For very large streams, you can accelerate resync and seeking by periodically inserting superframes and optional skip-list backlinks:
+
+- Superframes summarize a recent range (IDs, offsets, checksums) to enable bounded binary search mid-stream.
+- Skip-list backlinks add logarithmic (2^k) pointers in payload so `Timeline::seek_with_skiplist` can locate targets in ~O(log n) when present.
+
+Enable on the builder (payload should carry the index/backlinks your app defines):
+
+```rust
+use durapack_core::encoder::FrameBuilder;
+use bytes::Bytes;
+
+let encoded = FrameBuilder::new(1024)
+    .payload(Bytes::from("index-or-summary"))
+    .as_superframe()
+    .with_skiplist()
+    .build()?;
+```
+
+Note: These features are optional and backward-compatible; readers that don’t use them will still decode frames normally.

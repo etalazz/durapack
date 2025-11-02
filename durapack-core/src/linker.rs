@@ -258,6 +258,51 @@ impl Timeline {
             continuity,
         }
     }
+
+    /// Seek to a target frame ID using skip-list backlinks if available
+    pub fn seek_with_skiplist(&self, target_id: u64) -> Option<&Frame> {
+        // Build a map for quick lookup
+        let mut map = alloc::collections::BTreeMap::new();
+        for f in &self.frames {
+            map.insert(f.header.frame_id, f);
+        }
+        // If exact exists
+        if let Some(f) = map.get(&target_id) {
+            return Some(f);
+        }
+        // Heuristic: start from the largest frame_id <= target
+        let mut cursor = map.range(..=target_id).next_back().map(|(_, f)| *f)?;
+        // Follow skip-links if present; otherwise walk linearly backward until found or start
+        loop {
+            if cursor.header.frame_id == target_id {
+                return Some(cursor);
+            }
+            if let Some(links) = &cursor.skip_links {
+                // pick the largest link not overshooting the target
+                if let Some(best) = links
+                    .iter()
+                    .filter(|l| l.target_id <= target_id)
+                    .max_by_key(|l| (l.level, l.target_id))
+                {
+                    if let Some(next) = map.get(&best.target_id) {
+                        cursor = next;
+                        continue;
+                    }
+                }
+            }
+            // Fallback: step back by one if possible
+            if let Some(prev) = map
+                .range(..cursor.header.frame_id)
+                .next_back()
+                .map(|(_, f)| *f)
+            {
+                cursor = prev;
+            } else {
+                break;
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]

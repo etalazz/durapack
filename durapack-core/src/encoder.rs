@@ -162,6 +162,18 @@ impl FrameBuilder {
         self
     }
 
+    /// Mark this frame as a superframe (payload should carry an index)
+    pub fn as_superframe(mut self) -> Self {
+        self.flags |= FrameFlags::IS_SUPERFRAME;
+        self
+    }
+
+    /// Indicate that payload includes skip-list backlinks
+    pub fn with_skiplist(mut self) -> Self {
+        self.flags |= FrameFlags::HAS_SKIPLIST;
+        self
+    }
+
     /// Build and encode the frame
     pub fn build(self) -> Result<Bytes, FrameError> {
         let header = FrameHeader::with_flags(

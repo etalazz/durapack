@@ -2,12 +2,12 @@
 
 use crate::constants::{FrameFlags, BLAKE3_HASH_SIZE, MAX_PAYLOAD_SIZE, PROTOCOL_VERSION};
 use crate::error::FrameError;
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use alloc::format;
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 
 /// Frame header containing metadata
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

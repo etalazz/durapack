@@ -3,8 +3,8 @@
 use crate::constants::{FrameFlags, TrailerType, FRAME_MARKER, MIN_HEADER_SIZE};
 use crate::error::FrameError;
 use crate::types::{Frame, FrameHeader};
-use bytes::{BufMut, Bytes, BytesMut};
 use alloc::format;
+use bytes::{BufMut, Bytes, BytesMut};
 
 /// Encode a frame into bytes
 ///

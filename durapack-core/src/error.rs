@@ -7,7 +7,10 @@ use alloc::string::String;
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameError {
     /// Invalid frame marker detected
-    #[cfg_attr(feature = "std", error("Invalid frame marker: expected DURP, got {0:?}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Invalid frame marker: expected DURP, got {0:?}")
+    )]
     BadMarker([u8; 4]),
 
     /// Unsupported protocol version
@@ -23,7 +26,10 @@ pub enum FrameError {
     PayloadTooLarge(u32, u32),
 
     /// Incomplete frame - not enough data
-    #[cfg_attr(feature = "std", error("Incomplete frame: expected {expected} bytes, got {actual}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Incomplete frame: expected {expected} bytes, got {actual}")
+    )]
     IncompleteFrame {
         /// The number of bytes expected.
         expected: usize,
@@ -32,7 +38,10 @@ pub enum FrameError {
     },
 
     /// Checksum mismatch
-    #[cfg_attr(feature = "std", error("Checksum mismatch: expected {expected:x}, got {actual:x}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Checksum mismatch: expected {expected:x}, got {actual:x}")
+    )]
     ChecksumMismatch {
         /// The expected checksum.
         expected: u32,
@@ -61,7 +70,10 @@ pub enum FrameError {
     NoFramesFound,
 
     /// Gap detected in frame sequence
-    #[cfg_attr(feature = "std", error("Gap in sequence: frame {0} references prev_id {1} which is missing"))]
+    #[cfg_attr(
+        feature = "std",
+        error("Gap in sequence: frame {0} references prev_id {1} which is missing")
+    )]
     SequenceGap(u64, u64),
 
     /// Back-link hash mismatch

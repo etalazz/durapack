@@ -3,8 +3,8 @@
 use crate::constants::{FRAME_MARKER, MAX_FRAME_SIZE, MIN_HEADER_SIZE};
 use crate::decoder::decode_frame_from_bytes;
 use crate::types::Frame;
-use bytes::Bytes;
 use alloc::vec::Vec;
+use bytes::Bytes;
 
 #[cfg(feature = "logging")]
 use tracing::{debug, warn};

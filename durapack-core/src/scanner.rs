@@ -9,6 +9,15 @@ use bytes::Bytes;
 #[cfg(feature = "logging")]
 use tracing::{debug, warn};
 
+/// Information about a found marker candidate used for confidence scoring
+#[derive(Debug, Clone, Copy, Default)]
+struct MarkerHit {
+    pos: usize,
+    hamming: u32,
+    had_sync: bool,
+    had_preamble: bool,
+}
+
 /// A frame found at a specific offset in the stream
 #[derive(Debug, Clone)]
 pub struct LocatedFrame {
@@ -20,6 +29,9 @@ pub struct LocatedFrame {
 
     /// Total size of the frame in bytes
     pub size: usize,
+
+    /// Confidence score [0.0, 1.0]
+    pub confidence: f32,
 }
 
 /// Scan a byte stream for valid frames, even if the stream is damaged
@@ -43,21 +55,25 @@ pub fn scan_stream(data: &[u8]) -> Vec<LocatedFrame> {
 
     while pos < data.len() {
         // Look for frame marker
-        if let Some(marker_pos) = find_marker(&data[pos..]) {
-            let absolute_pos = pos + marker_pos;
+        if let Some(hit) = find_marker(&data[pos..]) {
+            let absolute_pos = pos + hit.pos;
 
             #[cfg(feature = "logging")]
             debug!("Found potential marker at offset {}", absolute_pos);
 
             // Try to decode frame starting at this position
             match try_decode_at_offset(data, absolute_pos) {
-                Ok(located_frame) => {
+                Ok(mut located_frame) => {
+                    // Score confidence for this hit
+                    located_frame.confidence = compute_confidence(&located_frame, hit);
+
                     #[cfg(feature = "logging")]
                     debug!(
-                        "Successfully decoded frame {} at offset {} (size: {} bytes)",
+                        "Decoded frame {} at {} (size {}), conf {:.2}",
                         located_frame.frame.header.frame_id,
                         located_frame.offset,
-                        located_frame.size
+                        located_frame.size,
+                        located_frame.confidence
                     );
 
                     // Jump past this frame
@@ -88,14 +104,53 @@ pub fn scan_stream(data: &[u8]) -> Vec<LocatedFrame> {
     results
 }
 
+/// Compute a confidence score for a successfully decoded frame
+fn compute_confidence(lf: &LocatedFrame, hit: MarkerHit) -> f32 {
+    let mut score = 0.5f32; // base for a structurally valid decode
+
+    // Marker quality
+    if hit.hamming == 0 {
+        score += 0.2;
+    } else if hit.hamming <= crate::constants::MAX_MARKER_HAMMING {
+        score += 0.05;
+    }
+
+    if hit.had_sync {
+        score += 0.05;
+    }
+    if hit.had_preamble {
+        score += 0.05;
+    }
+
+    // Trailer presence (checksum/hash validated during decode)
+    use crate::constants::TrailerType;
+    match lf.frame.header.flags.trailer_type() {
+        TrailerType::Blake3 => score += 0.20,
+        TrailerType::Crc32c => score += 0.10,
+        TrailerType::None => {}
+    }
+
+    // Size sanity already enforced, small bonus for smaller frames which often occur and are less likely to be false positives
+    if lf.size <= (64 * 1024) {
+        score += 0.05;
+    }
+
+    score.clamp(0.0, 1.0)
+}
+
 /// Find the next occurrence of the frame marker
-fn find_marker(data: &[u8]) -> Option<usize> {
+fn find_marker(data: &[u8]) -> Option<MarkerHit> {
     use crate::constants::{MAX_MARKER_HAMMING, PREAMBLE_PATTERN, ROBUST_SYNC_WORD};
 
     // First try an exact fast search using memmem
     if data.len() >= FRAME_MARKER.len() {
         if let Some(pos) = memchr::memmem::find(data, FRAME_MARKER) {
-            return Some(pos);
+            return Some(MarkerHit {
+                pos,
+                hamming: 0,
+                had_sync: false,
+                had_preamble: false,
+            });
         }
     }
 
@@ -107,7 +162,12 @@ fn find_marker(data: &[u8]) -> Option<usize> {
             if start + FRAME_MARKER.len() <= data.len()
                 && &data[start..start + FRAME_MARKER.len()] == FRAME_MARKER
             {
-                return Some(start);
+                return Some(MarkerHit {
+                    pos: start,
+                    hamming: 0,
+                    had_sync: true,
+                    had_preamble: false,
+                });
             }
         }
     }
@@ -140,7 +200,12 @@ fn find_marker(data: &[u8]) -> Option<usize> {
                 if start + FRAME_MARKER.len() <= data.len()
                     && &data[start..start + FRAME_MARKER.len()] == FRAME_MARKER
                 {
-                    return Some(start);
+                    return Some(MarkerHit {
+                        pos: start,
+                        hamming: 0,
+                        had_sync: false,
+                        had_preamble: true,
+                    });
                 }
                 i = start;
             } else {
@@ -161,7 +226,12 @@ fn find_marker(data: &[u8]) -> Option<usize> {
                 }
             }
             if dist <= MAX_MARKER_HAMMING {
-                return Some(i);
+                return Some(MarkerHit {
+                    pos: i,
+                    hamming: dist,
+                    had_sync: false,
+                    had_preamble: false,
+                });
             }
         }
     }
@@ -223,6 +293,7 @@ fn try_decode_at_offset(
         offset,
         frame,
         size: total_size,
+        confidence: 0.0, // filled by caller after scoring
     })
 }
 
@@ -267,12 +338,13 @@ pub fn scan_stream_with_stats(data: &[u8]) -> (Vec<LocatedFrame>, ScanStats) {
     let mut pos = 0;
 
     while pos < data.len() {
-        if let Some(marker_pos) = find_marker(&data[pos..]) {
-            let absolute_pos = pos + marker_pos;
+        if let Some(hit) = find_marker(&data[pos..]) {
+            let absolute_pos = pos + hit.pos;
             stats.markers_found += 1;
 
             match try_decode_at_offset(data, absolute_pos) {
-                Ok(located_frame) => {
+                Ok(mut located_frame) => {
+                    located_frame.confidence = compute_confidence(&located_frame, hit);
                     stats.bytes_recovered += located_frame.size;
                     pos = absolute_pos + located_frame.size;
                     results.push(located_frame);
@@ -287,6 +359,25 @@ pub fn scan_stream_with_stats(data: &[u8]) -> (Vec<LocatedFrame>, ScanStats) {
         }
     }
 
+    // Neighbor-based bonuses: backlink consistency and spacing plausibility
+    for i in 1..results.len() {
+        let (prev, curr) = {
+            // split borrow to appease the borrow checker
+            let (head, tail) = results.split_at_mut(i);
+            (&head[i - 1] as *const LocatedFrame, &mut tail[0])
+        };
+        // SAFETY: prev is from an earlier immutable slice; not aliased with curr
+        let prev = unsafe { &*prev };
+        // Backlink consistency
+        if curr.frame.header.prev_hash == prev.frame.compute_hash() {
+            curr.confidence = (curr.confidence + 0.05).clamp(0.0, 1.0);
+        }
+        // Spacing plausibility (next offset immediately after previous frame)
+        if curr.offset == prev.offset + prev.size {
+            curr.confidence = (curr.confidence + 0.05).clamp(0.0, 1.0);
+        }
+    }
+
     stats.frames_found = results.len();
 
     (results, stats)
@@ -297,20 +388,18 @@ pub fn scan_stream_zero_copy(buf: Bytes) -> Vec<LocatedFrame> {
     let mut results = Vec::new();
     let mut pos = 0;
     while pos < buf.len() {
-        if let Some(rel) = find_marker(&buf[pos..]) {
-            let at = pos + rel;
+        if let Some(hit) = find_marker(&buf[pos..]) {
+            let at = pos + hit.pos;
             // Fast path: compute total size to slice just once
             match try_decode_at_offset(&buf, at) {
-                Ok(loc) => {
+                Ok(mut loc) => {
                     let start = at;
                     let end = at + loc.size;
                     let slice = buf.slice(start..end);
                     if let Ok(frame) = crate::decoder::decode_frame_from_bytes_zero_copy(slice) {
-                        results.push(LocatedFrame {
-                            offset: at,
-                            size: loc.size,
-                            frame,
-                        });
+                        loc.frame = frame;
+                        loc.confidence = compute_confidence(&loc, hit);
+                        results.push(loc);
                         pos = end;
                         continue;
                     }

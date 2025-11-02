@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use durapack_core::linker::link_frames;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -22,6 +23,8 @@ struct RecoveredFrame {
 struct GapRange {
     before: u64,
     after: u64,
+    /// Recovery confidence for this gap, derived from neighbor frames
+    confidence: f32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,7 +50,7 @@ fn write_jsonl(mut out: impl Write, record: &ScanRecord) -> Result<()> {
 
 #[allow(dead_code)]
 pub fn execute(input: &str, output: Option<&str>, stats_only: bool) -> Result<()> {
-    execute_ext(input, output, stats_only, false, None)
+    execute_ext(input, output, stats_only, false, None, None)
 }
 
 pub fn execute_ext(
@@ -56,6 +59,7 @@ pub fn execute_ext(
     stats_only: bool,
     jsonl: bool,
     carve_payloads: Option<&str>,
+    min_confidence: Option<f32>,
 ) -> Result<()> {
     info!("Scanning: {}", input);
 
@@ -80,6 +84,8 @@ pub fn execute_ext(
         durapack_core::scanner::scan_stream_with_stats(&data)
     };
 
+    let min_conf = min_confidence.unwrap_or(0.0);
+
     if jsonl {
         // Prepare writer (stdout or file)
         let mut writer: Box<dyn Write> = match output {
@@ -103,28 +109,38 @@ pub fn execute_ext(
         // Compute gaps via timeline reconstruction
         let frames_only: Vec<_> = located_frames.iter().map(|lf| lf.frame.clone()).collect();
         let timeline = link_frames(frames_only);
+        // Build a map of frame_id -> confidence for gap confidence computation
+        let mut conf_map: HashMap<u64, f32> = HashMap::new();
+        for lf in &located_frames {
+            conf_map.insert(lf.frame.header.frame_id, lf.confidence);
+        }
         for gap in timeline.gaps {
+            let c_before = conf_map.get(&gap.before).copied().unwrap_or(0.5);
+            let c_after = conf_map.get(&gap.after).copied().unwrap_or(0.5);
+            let gap_conf = ((c_before + c_after) / 2.0).clamp(0.0, 1.0);
             write_jsonl(
                 &mut writer,
                 &ScanRecord::Gap(GapRange {
                     before: gap.before,
                     after: gap.after,
+                    confidence: gap_conf,
                 }),
             )?;
         }
 
-        // Emit each frame as JSONL
+        // Emit each frame as JSONL, honoring min_confidence
         for lf in &located_frames {
+            if lf.confidence < min_conf {
+                continue;
+            }
             let payload_str = String::from_utf8_lossy(&lf.frame.payload).to_string();
-            // Naive confidence heuristic: shorter frames and exact decodes get higher score
-            let confidence = 1.0_f32;
             let rec = ScanRecord::Frame(RecoveredFrame {
                 offset: lf.offset,
                 frame_id: lf.frame.header.frame_id,
                 payload_len: lf.frame.header.payload_len,
                 size: lf.size,
                 payload: payload_str,
-                confidence,
+                confidence: lf.confidence,
             });
             write_jsonl(&mut writer, &rec)?;
         }
@@ -133,6 +149,9 @@ pub fn execute_ext(
         if let Some(pattern) = carve_payloads {
             let stream_id = 0usize; // single-stream file
             for lf in &located_frames {
+                if lf.confidence < min_conf {
+                    continue;
+                }
                 let path = pattern
                     .replace("{stream}", &stream_id.to_string())
                     .replace("{frame}", &lf.frame.header.frame_id.to_string());
@@ -158,9 +177,10 @@ pub fn execute_ext(
         return Ok(());
     }
 
-    // Convert to JSON-friendly format
+    // Convert to JSON-friendly format, honoring min_confidence
     let recovered: Vec<RecoveredFrame> = located_frames
         .iter()
+        .filter(|lf| lf.confidence >= min_conf)
         .map(|lf| {
             let payload_str = String::from_utf8_lossy(&lf.frame.payload).to_string();
             RecoveredFrame {
@@ -169,7 +189,7 @@ pub fn execute_ext(
                 payload_len: lf.frame.header.payload_len,
                 size: lf.size,
                 payload: payload_str,
-                confidence: 1.0,
+                confidence: lf.confidence,
             }
         })
         .collect();
@@ -191,8 +211,8 @@ pub fn execute_ext(
         println!("=== Recovered Frames ===");
         for frame in &recovered {
             println!(
-                "Frame {} @ offset {}: {} bytes",
-                frame.frame_id, frame.offset, frame.size
+                "Frame {} @ offset {}: {} bytes (conf {:.2})",
+                frame.frame_id, frame.offset, frame.size, frame.confidence
             );
         }
     }
@@ -201,6 +221,9 @@ pub fn execute_ext(
     if let Some(pattern) = carve_payloads {
         let stream_id = 0usize; // single-stream file
         for lf in &located_frames {
+            if lf.confidence < min_conf {
+                continue;
+            }
             let path = pattern
                 .replace("{stream}", &stream_id.to_string())
                 .replace("{frame}", &lf.frame.header.frame_id.to_string());

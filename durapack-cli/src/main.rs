@@ -83,6 +83,10 @@ enum Commands {
         /// Carve payloads to files; pattern may include {stream} and {frame}
         #[arg(long)]
         carve_payloads: Option<String>,
+
+        /// Minimum confidence [0.0-1.0] for reporting/carving frames
+        #[arg(long)]
+        min_confidence: Option<f32>,
     },
 
     /// Verify frame integrity and back-links
@@ -159,12 +163,14 @@ fn main() -> Result<()> {
             stats_only,
             jsonl,
             carve_payloads,
+            min_confidence,
         } => commands::scan::execute_ext(
             &input,
             output.as_deref(),
             stats_only,
             jsonl,
             carve_payloads.as_deref(),
+            min_confidence,
         ),
 
         Commands::Verify { input, report_gaps } => commands::verify::execute(&input, report_gaps),

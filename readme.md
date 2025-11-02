@@ -134,12 +134,12 @@ cargo install durapack-cli
 
 - Stream-friendly I/O:
   - All commands accept `-` for stdin and can write to stdout (e.g., `-o -`).
-  - `scan --jsonl` streams one JSON record per line: a Stats record, Gap records, then Frame records.
+  - `scan --jsonl` streams one JSON record per line: a Stats record, Gap records (with confidence), then Frame records (with confidence).
 - Packing flexibility:
   - `pack --jsonl` reads one JSON object per line; `--chunk-strategy {jsonl|aggregate}` controls parsing.
   - `pack --rate-limit <bytes/sec>` throttles output; `--progress` shows a progress bar.
 - Carving payloads:
-  - `scan --carve-payloads "payload_{stream}_{frame}.bin"` writes each recovered payload to disk.
+  - `scan --carve-payloads "payload_{stream}_{frame}.bin"` writes each recovered payload to disk. Combine with `--min-confidence <0.0-1.0>` to filter lower-confidence hits.
 - Visualizing timelines:
   - `timeline --dot -o -` emits Graphviz DOT; pipe to `dot` to render.
 
@@ -194,6 +194,8 @@ Subcommands and options:
     Print statistics only and exit.
   - --jsonl (default: false)
     Stream results as JSON Lines (records: Stats, Gap, Frame).
+  - --min-confidence <float>
+    Minimum confidence threshold [0.0-1.0] to report/carve frames.
   - --carve-payloads <pattern>
     Write payloads to files; pattern may include {stream} and {frame}.
 
@@ -263,6 +265,17 @@ Run benchmarks:
 cargo bench -p durapack-core --bench scanner
 cargo bench -p durapack-core --bench encoding
 ```
+
+### Scanning confidence model
+
+The scanner assigns a confidence score [0.0, 1.0] to each recovered frame based on:
+
+- Marker quality (exact vs. bounded-Hamming match)
+- Presence of robust sync/preamble before the marker
+- Trailer validation strength (BLAKE3 > CRC32C > none)
+- Size sanity and neighbor consistency (backlinks, contiguous spacing)
+
+You can filter outputs and carving by `--min-confidence`.
 
 ## ✅ Testing
 

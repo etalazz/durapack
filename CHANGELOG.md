@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `FrameBuilder` helpers: `.as_superframe()`, `.with_skiplist()`
   - Types to carry superframe index and skip links in payload: `SuperframeIndex`, `SkipLink`
   - `Timeline::seek_with_skiplist` helper to leverage backlinks for O(log n) seeks when present
+- Confidence model in scanner:
+  - Per-frame confidence scoring based on marker quality (exact/hamming), sync/preamble presence, trailer validation, and size sanity
+  - Neighbor-based bonuses for backlink consistency and contiguous spacing
+  - Per-gap confidence derived from neighboring frame confidences; emitted in JSONL
+  - CLI `scan` supports `--min-confidence` to filter outputs/carving
 
 ### Changed
 - Scanner search pipeline now tries: exact match → sync/preamble-assisted resync → bounded-Hamming fallback

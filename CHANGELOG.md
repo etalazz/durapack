@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-11-02
+
+### Added
+- Sync/marker engineering (format robustness and recovery):
+  - Optional robust sync word (`ROBUST_SYNC_WORD`) with low autocorrelation preceding the marker
+  - Optional preamble (`PREAMBLE_PATTERN`) with `MIN_PREAMBLE_LEN` to help resync after burst errors
+  - Bounded-distance Hamming matching for the 4-byte `FRAME_MARKER` (`MAX_MARKER_HAMMING`) to tolerate small bit flips
+  - New `FrameFlags` bits: `HAS_PREAMBLE` and `HAS_SYNC_PREFIX`
+
+### Changed
+- Scanner search pipeline now tries: exact match → sync/preamble-assisted resync → bounded-Hamming fallback
+- Encoder can optionally emit preamble and/or robust sync prefix when corresponding flags are set (default remains unchanged)
+
+### Documentation
+- README updated with a "Robust sync/marker" feature and a usage section (constants, flags, and behavior)
+
+### Compatibility
+- Backward compatible: existing frames (without preamble/sync) decode unchanged; optional prefixes are only emitted if explicitly enabled via flags
+
 ## [0.2.2] - 2025-11-02
 
 ### Added

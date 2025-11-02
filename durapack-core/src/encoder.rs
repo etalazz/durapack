@@ -31,9 +31,33 @@ pub fn encode_frame(header: &FrameHeader, payload: &[u8]) -> Result<Bytes, Frame
 
     let trailer_type = header.flags.trailer_type();
     let trailer_size = trailer_type.size();
-    let total_size = MIN_HEADER_SIZE + payload.len() + trailer_size;
+
+    // Optional sync/preamble sizes
+    let mut prefix_len = 0;
+    if header.flags.as_u8() & crate::constants::FrameFlags::HAS_SYNC_PREFIX != 0 {
+        prefix_len += crate::constants::ROBUST_SYNC_WORD.len();
+    }
+    if header.flags.as_u8() & crate::constants::FrameFlags::HAS_PREAMBLE != 0 {
+        // Use minimal preamble length
+        prefix_len += crate::constants::MIN_PREAMBLE_LEN;
+    }
+
+    let total_size = prefix_len + MIN_HEADER_SIZE + payload.len() + trailer_size;
 
     let mut buf = BytesMut::with_capacity(total_size);
+
+    // Optional prefix: preamble (alternating 0x55/0xAA)
+    if header.flags.as_u8() & crate::constants::FrameFlags::HAS_PREAMBLE != 0 {
+        let pat = crate::constants::PREAMBLE_PATTERN;
+        for i in 0..crate::constants::MIN_PREAMBLE_LEN {
+            buf.put_u8(pat[i % pat.len()]);
+        }
+    }
+
+    // Optional robust sync word
+    if header.flags.as_u8() & crate::constants::FrameFlags::HAS_SYNC_PREFIX != 0 {
+        buf.put_slice(crate::constants::ROBUST_SYNC_WORD);
+    }
 
     // Write marker
     buf.put_slice(FRAME_MARKER);

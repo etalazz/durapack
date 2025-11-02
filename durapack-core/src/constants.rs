@@ -5,6 +5,21 @@ use serde::{Deserialize, Serialize};
 /// Frame marker - 4 bytes for synchronization
 pub const FRAME_MARKER: &[u8; 4] = b"DURP";
 
+/// Optional robust sync word placed before the marker to aid resync
+/// Low autocorrelation pattern (example m-sequence-like bytes)
+pub const ROBUST_SYNC_WORD: &[u8; 8] = b"\xA5\x5A\xC3\x3C\x96\x69\x78\x87";
+
+/// Optional preamble pattern for burst-error resync: alternating 0x55, 0xAA
+pub const PREAMBLE_PATTERN: &[u8; 2] = b"\x55\xAA";
+
+/// Minimum preamble length (in bytes) considered meaningful by the scanner when present
+pub const MIN_PREAMBLE_LEN: usize = 8;
+
+/// Max Hamming distance (in bits) tolerated when matching the 4-byte marker during scanning
+/// 0 = only exact matches. Small values (e.g., 1) can help recover through single-bit flips
+/// while keeping false positives low.
+pub const MAX_MARKER_HAMMING: u32 = 1;
+
 /// Current protocol version
 pub const PROTOCOL_VERSION: u8 = 1;
 
@@ -65,6 +80,12 @@ impl FrameFlags {
 
     /// Frame is the last in a sequence
     pub const IS_LAST: u8 = 0b0000_1000;
+
+    /// Frame encoded with a preamble before the marker
+    pub const HAS_PREAMBLE: u8 = 0b0001_0000;
+
+    /// Frame encoded with a robust sync word before the marker
+    pub const HAS_SYNC_PREFIX: u8 = 0b0010_0000;
 
     /// Create new flags from raw byte
     pub const fn new(flags: u8) -> Self {

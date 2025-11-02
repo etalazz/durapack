@@ -352,3 +352,38 @@ This software is subject to U.S. export laws and regulations. By downloading or 
 - Windows CI runs a PowerShell smoke test of all CLI commands.
   - Workflow: `.github/workflows/windows-cli-smoke.yml`
   - Local run: `pwsh -NoProfile -File scripts/test-cli.ps1`
+
+---
+
+## 🔒 Robust sync/marker (format robustness)
+
+Durapack can optionally harden synchronization to improve recovery in noisy/damaged streams:
+
+- Robust sync word before the 4-byte marker: `ROBUST_SYNC_WORD` (low autocorrelation)
+- Optional preamble: `PREAMBLE_PATTERN` repeated for at least `MIN_PREAMBLE_LEN` bytes
+- Scanner tolerance: bounded Hamming distance on `FRAME_MARKER` via `MAX_MARKER_HAMMING`
+
+How the scanner searches:
+1) Exact `FRAME_MARKER` via `memchr::memmem` (fast path)
+2) If present: look for `ROBUST_SYNC_WORD` and attempt marker immediately after
+3) If present: detect a short preamble run then attempt marker
+4) Fallback: bounded-Hamming match of the 4-byte marker to tolerate 1-bit flips
+
+Enable preamble/sync when encoding (optional):
+
+```rust
+use durapack_core::{constants::FrameFlags, encoder::FrameBuilder};
+use bytes::Bytes;
+
+let payload = Bytes::from("payload");
+let encoded = FrameBuilder::new(1)
+    .payload(payload)
+    // Set flags via FrameHeader in build_struct if you need full control.
+    // For raw encode_frame usage, set header.flags to include these bits:
+    // FrameFlags::HAS_PREAMBLE | FrameFlags::HAS_SYNC_PREFIX
+    .build()?;
+```
+
+Notes:
+- Defaults remain unchanged; no extra bytes are added unless you enable the flags.
+- The scanner automatically benefits from sync/preamble if present.

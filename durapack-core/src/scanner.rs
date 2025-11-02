@@ -90,15 +90,83 @@ pub fn scan_stream(data: &[u8]) -> Vec<LocatedFrame> {
 
 /// Find the next occurrence of the frame marker
 fn find_marker(data: &[u8]) -> Option<usize> {
-    // Fast substring search; memchr dispatches to optimized backends (SSE2/AVX2/NEON)
+    use crate::constants::{MAX_MARKER_HAMMING, PREAMBLE_PATTERN, ROBUST_SYNC_WORD};
+
+    // First try an exact fast search using memmem
     if data.len() >= FRAME_MARKER.len() {
         if let Some(pos) = memchr::memmem::find(data, FRAME_MARKER) {
             return Some(pos);
         }
     }
-    // Fallback: naive window scan
-    data.windows(FRAME_MARKER.len())
-        .position(|window| window == FRAME_MARKER)
+
+    // Optional: if a robust sync word exists nearby, bias search around it
+    if data.len() >= ROBUST_SYNC_WORD.len() + FRAME_MARKER.len() {
+        if let Some(sync_pos) = memchr::memmem::find(data, ROBUST_SYNC_WORD) {
+            // Try exact marker immediately following the sync
+            let start = sync_pos + ROBUST_SYNC_WORD.len();
+            if start + FRAME_MARKER.len() <= data.len()
+                && &data[start..start + FRAME_MARKER.len()] == FRAME_MARKER
+            {
+                return Some(start);
+            }
+        }
+    }
+
+    // Check for preamble runs that may precede a marker
+    if data.len()
+        >= PREAMBLE_PATTERN.len() * crate::constants::MIN_PREAMBLE_LEN + FRAME_MARKER.len()
+    {
+        let mut i = 0usize;
+        while i + PREAMBLE_PATTERN.len() <= data.len() {
+            // Count alternating 0x55,0xAA pattern length
+            let mut run = 0usize;
+            let mut j = i;
+            let mut expect = PREAMBLE_PATTERN[0];
+            while j < data.len() {
+                if data[j] == expect {
+                    run += 1;
+                    expect = if expect == PREAMBLE_PATTERN[0] {
+                        PREAMBLE_PATTERN[1]
+                    } else {
+                        PREAMBLE_PATTERN[0]
+                    };
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            if run >= crate::constants::MIN_PREAMBLE_LEN {
+                let start = i + run;
+                if start + FRAME_MARKER.len() <= data.len()
+                    && &data[start..start + FRAME_MARKER.len()] == FRAME_MARKER
+                {
+                    return Some(start);
+                }
+                i = start;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    // Bounded-distance Hamming check for the 4-byte marker to reduce false positives but tolerate bit flips
+    let m = FRAME_MARKER;
+    if MAX_MARKER_HAMMING > 0 && data.len() >= m.len() {
+        for i in 0..=data.len() - m.len() {
+            let mut dist = 0u32;
+            for k in 0..m.len() {
+                dist += (data[i + k] ^ m[k]).count_ones();
+                if dist > MAX_MARKER_HAMMING {
+                    break;
+                }
+            }
+            if dist <= MAX_MARKER_HAMMING {
+                return Some(i);
+            }
+        }
+    }
+
+    None
 }
 
 /// Try to decode a frame at a specific offset

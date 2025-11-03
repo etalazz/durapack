@@ -117,6 +117,10 @@ enum Commands {
         /// Emit Graphviz DOT instead of JSON
         #[arg(long, default_value_t = false)]
         dot: bool,
+
+        /// Include detailed analysis (reasons/conflicts/recipes) in JSON or DOT
+        #[arg(long, default_value_t = false)]
+        analyze: bool,
     },
 }
 
@@ -180,6 +184,7 @@ fn main() -> Result<()> {
             output,
             include_orphans,
             dot,
-        } => commands::timeline::execute_ext(&input, &output, include_orphans, dot),
+            analyze,
+        } => commands::timeline::execute_ext(&input, &output, include_orphans, dot, analyze),
     }
 }

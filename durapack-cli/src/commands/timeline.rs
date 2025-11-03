@@ -1,5 +1,8 @@
 use anyhow::{bail, Context, Result};
-use durapack_core::{linker::link_frames, scanner::scan_stream};
+use durapack_core::{
+    linker::{analyze_located_frames, link_frames, report_to_dot, GapDetail, RecoveryRecipe},
+    scanner::scan_stream,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -18,6 +21,8 @@ struct TimelineOutput {
     gaps: Vec<TimelineGap>,
     orphans: Vec<TimelineFrame>,
     stats: TimelineStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analysis: Option<AnalysisExtras>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -34,12 +39,58 @@ struct TimelineStats {
     continuity: f64,
 }
 
-#[allow(dead_code)]
-pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
-    execute_ext(input, output, include_orphans, false)
+#[derive(Serialize, Deserialize)]
+struct GapReasonJson {
+    before: u64,
+    after: u64,
+    reason: String,
 }
 
-pub fn execute_ext(input: &str, output: &str, include_orphans: bool, dot: bool) -> Result<()> {
+#[derive(Serialize, Deserialize)]
+struct ConflictJson {
+    at: u64,
+    contenders: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct OrphanClusterJson {
+    ids: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum RecipeJson {
+    InsertParityFrame {
+        between: (u64, u64),
+        reason: String,
+    },
+    RewindOffset {
+        near_frame: u64,
+        by_bytes: isize,
+        reason: String,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+struct AnalysisExtras {
+    gap_reasons: Vec<GapReasonJson>,
+    conflicts: Vec<ConflictJson>,
+    orphan_clusters: Vec<OrphanClusterJson>,
+    recipes: Vec<RecipeJson>,
+}
+
+#[allow(dead_code)]
+pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
+    execute_ext(input, output, include_orphans, false, false)
+}
+
+pub fn execute_ext(
+    input: &str,
+    output: &str,
+    include_orphans: bool,
+    dot: bool,
+    analyze: bool,
+) -> Result<()> {
     info!("Reconstructing timeline from: {}", input);
 
     // Read input ("-" for stdin)
@@ -60,8 +111,8 @@ pub fn execute_ext(input: &str, output: &str, include_orphans: bool, dot: bool) 
 
     info!("Found {} frames", located_frames.len());
 
-    // Extract frames and link
-    let frames: Vec<_> = located_frames.into_iter().map(|lf| lf.frame).collect();
+    // Extract frames and link (basic timeline always available)
+    let frames: Vec<_> = located_frames.iter().map(|lf| lf.frame.clone()).collect();
     let timeline = link_frames(frames);
 
     info!(
@@ -72,38 +123,42 @@ pub fn execute_ext(input: &str, output: &str, include_orphans: bool, dot: bool) 
     );
 
     if dot {
-        // Emit Graphviz DOT representation
+        // Emit Graphviz DOT representation; if analyze, use richer report
         let mut out: Box<dyn Write> = if output == "-" {
             Box::new(io::stdout())
         } else {
             Box::new(fs::File::create(output)?)
         };
 
-        writeln!(&mut out, "digraph timeline {{")?;
-        writeln!(&mut out, "  rankdir=LR;")?;
-        // Nodes
-        for f in &timeline.frames {
-            writeln!(
-                &mut out,
-                "  {} [label=\"{}\"];",
-                f.header.frame_id, f.header.frame_id
-            )?;
+        if analyze {
+            let report = analyze_located_frames(located_frames);
+            let dot_str = report_to_dot(&report);
+            write!(&mut out, "{}", dot_str)?;
+        } else {
+            // Basic DOT (backwards compatible)
+            writeln!(&mut out, "digraph timeline {{")?;
+            writeln!(&mut out, "  rankdir=LR;")?;
+            for f in &timeline.frames {
+                writeln!(
+                    &mut out,
+                    "  {} [label=\"{}\"];",
+                    f.header.frame_id, f.header.frame_id
+                )?;
+            }
+            for win in timeline.frames.windows(2) {
+                let a = win[0].header.frame_id;
+                let b = win[1].header.frame_id;
+                writeln!(&mut out, "  {} -> {};", a, b)?;
+            }
+            for g in &timeline.gaps {
+                writeln!(
+                    &mut out,
+                    "  {} -> {} [style=dashed, color=red, label=\"gap\"];",
+                    g.before, g.after
+                )?;
+            }
+            writeln!(&mut out, "}}")?;
         }
-        // Edges (by order)
-        for win in timeline.frames.windows(2) {
-            let a = win[0].header.frame_id;
-            let b = win[1].header.frame_id;
-            writeln!(&mut out, "  {} -> {};", a, b)?;
-        }
-        // Gaps as dashed edges
-        for g in &timeline.gaps {
-            writeln!(
-                &mut out,
-                "  {} -> {} [style=dashed, color=red, label=\"gap\"];",
-                g.before, g.after
-            )?;
-        }
-        writeln!(&mut out, "}}")?;
 
         return Ok(());
     }
@@ -150,11 +205,75 @@ pub fn execute_ext(input: &str, output: &str, include_orphans: bool, dot: bool) 
         continuity: stats.continuity,
     };
 
+    // Optional analysis extras
+    let analysis = if analyze {
+        let report = analyze_located_frames(located_frames);
+        let gap_reasons: Vec<GapReasonJson> = report
+            .gap_details
+            .iter()
+            .map(|gd: &GapDetail| GapReasonJson {
+                before: gd.gap.before,
+                after: gd.gap.after,
+                reason: match gd.reason {
+                    durapack_core::linker::GapReason::MissingById => "missing-by-id".to_string(),
+                    durapack_core::linker::GapReason::MissingByHash => {
+                        "missing-by-hash".to_string()
+                    }
+                },
+            })
+            .collect();
+        let conflicts: Vec<ConflictJson> = report
+            .conflicts
+            .iter()
+            .map(|c| ConflictJson {
+                at: c.at,
+                contenders: c.contenders.clone(),
+            })
+            .collect();
+        let orphan_clusters: Vec<OrphanClusterJson> = report
+            .orphan_clusters
+            .iter()
+            .map(|oc| OrphanClusterJson {
+                ids: oc.ids.clone(),
+            })
+            .collect();
+        let recipes: Vec<RecipeJson> = report
+            .recipes
+            .iter()
+            .map(|r| match r {
+                RecoveryRecipe::InsertParityFrame { between, reason } => {
+                    RecipeJson::InsertParityFrame {
+                        between: *between,
+                        reason: reason.clone(),
+                    }
+                }
+                RecoveryRecipe::RewindOffset {
+                    near_frame,
+                    by_bytes,
+                    reason,
+                } => RecipeJson::RewindOffset {
+                    near_frame: *near_frame,
+                    by_bytes: *by_bytes,
+                    reason: reason.clone(),
+                },
+            })
+            .collect();
+        Some(AnalysisExtras {
+            gap_reasons,
+            conflicts,
+            orphan_clusters,
+            recipes,
+        })
+    } else {
+        None
+    };
+
     let output_data = TimelineOutput {
         frames: frames_output,
         gaps: gaps_output,
         orphans: orphans_output,
         stats: stats_output,
+        analysis,
     };
 
     let json = serde_json::to_string_pretty(&output_data)

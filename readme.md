@@ -142,7 +142,7 @@ cargo install durapack-cli
 - Carving payloads:
   - `scan --carve-payloads "payload_{stream}_{frame}.bin"` writes each recovered payload to disk. Combine with `--min-confidence <0.0-1.0>` to filter lower-confidence hits.
 - Visualizing timelines:
-  - `timeline --dot -o -` emits Graphviz DOT; pipe to `dot` to render.
+  - `timeline --dot -o -` emits Graphviz DOT; add `--analyze` for labeled gaps, conflicts, clusters, and recovery notes; pipe to `dot` to render.
 
 ### Examples (Windows cmd)
 
@@ -158,6 +158,35 @@ type out.durp | durapack verify -i - --report-gaps
 
 :: Timeline to DOT and render with Graphviz
 Durapack timeline -i out.durp --dot -o - | dot -Tpng -o timeline.png
+```
+
+#### Timeline with analysis (JSON)
+
+```bat
+:: Emit timeline JSON to stdout including gap reasons, conflicts, clusters, and recipes
+Durapack timeline -i out.durp -o - --analyze
+```
+
+Example output (truncated):
+
+```json
+{
+  "frames": [
+    { "frame_id": 10, "prev_hash": "…", "payload": "…" },
+    { "frame_id": 12, "prev_hash": "…", "payload": "…" }
+  ],
+  "gaps": [ { "before": 10, "after": 12 } ],
+  "stats": { "total_frames": 15, "gaps": 1, "orphans": 0, "continuity": 93.33 },
+  "analysis": {
+    "gap_reasons": [ { "before": 10, "after": 12, "reason": "missing-by-id" } ],
+    "conflicts": [],
+    "orphan_clusters": [ { "ids": [42, 43] } ],
+    "recipes": [
+      { "type": "InsertParityFrame", "between": [10, 12], "reason": "gap detected: MissingById" },
+      { "type": "RewindOffset", "near_frame": 12, "by_bytes": 128, "reason": "non-contiguous offsets across gap" }
+    ]
+  }
+}
 ```
 
 ### CLI reference (--help)
@@ -215,6 +244,8 @@ Subcommands and options:
     Include orphaned frames in the JSON output.
   - --dot (default: false)
     Emit a Graphviz DOT graph instead of JSON (to file or stdout).
+  - --analyze (default: false)
+    Include detailed analysis in outputs. JSON gains `analysis` with `gap_reasons`, `conflicts`, `orphan_clusters`, and `recipes`. With `--dot`, the graph includes labeled gaps, conflict edges, orphan clusters, and note-shaped recipe hints.
 
 Quick help
 

@@ -5,11 +5,10 @@ use crate::error::FrameError;
 use crate::scanner::LocatedFrame;
 use crate::types::Frame;
 use alloc::collections::BTreeMap;
+use alloc::collections::BTreeSet;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-
-#[cfg(feature = "logging")]
-use tracing::{debug, warn};
 
 /// A reconstructed timeline of frames
 #[derive(Debug, Clone)]
@@ -37,6 +36,76 @@ pub struct SequenceGap {
     pub expected_hash: Option<[u8; BLAKE3_HASH_SIZE]>,
 }
 
+/// Reason for an inferred gap
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GapReason {
+    /// IDs skipped (e.g., 10 -> 13)
+    MissingById,
+    /// Next frame ID is sequential but backlink hash mismatches
+    MissingByHash,
+}
+
+/// A gap with a reason code
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GapDetail {
+    /// The basic gap info
+    pub gap: SequenceGap,
+    /// Classified reason
+    pub reason: GapReason,
+}
+
+/// Multiple successors reference the same predecessor (branch/conflict)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainConflict {
+    /// Frame ID of the predecessor where branching occurs
+    pub at: u64,
+    /// Successor candidate frame IDs that reference the same predecessor
+    pub contenders: Vec<u64>,
+}
+
+/// Connected set of orphan frames (by hash linkage among orphans)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrphanCluster {
+    /// Frame IDs included in this cluster
+    pub ids: Vec<u64>,
+}
+
+/// Human-friendly recovery hints for operators
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecoveryRecipe {
+    /// Suggest inserting a parity/redundancy frame in the gap
+    InsertParityFrame {
+        /// The pair of frame IDs surrounding the gap
+        between: (u64, u64),
+        /// Why this parity suggestion was emitted
+        reason: String,
+    },
+    /// Suggest adjusting the byte offset near a frame by a signed delta
+    RewindOffset {
+        /// Frame ID near which the offset adjustment is suggested
+        near_frame: u64,
+        /// Signed number of bytes to move the read cursor to realign
+        by_bytes: isize,
+        /// Why this offset suggestion was emitted
+        reason: String,
+    },
+}
+
+/// Detailed report derived from a reconstructed timeline
+#[derive(Debug, Clone)]
+pub struct TimelineReport {
+    /// The base timeline (ordered frames, gaps, orphans)
+    pub timeline: Timeline,
+    /// Gap classification
+    pub gap_details: Vec<GapDetail>,
+    /// Conflicts detected where multiple successors reference the same predecessor
+    pub conflicts: Vec<ChainConflict>,
+    /// Orphan clusters (connected components among orphans)
+    pub orphan_clusters: Vec<OrphanCluster>,
+    /// Recovery suggestions
+    pub recipes: Vec<RecoveryRecipe>,
+}
+
 /// Link frames into a timeline using their IDs and back-links
 ///
 /// This function:
@@ -46,7 +115,7 @@ pub struct SequenceGap {
 /// 4. Detects gaps in the sequence
 pub fn link_frames(frames: Vec<Frame>) -> Timeline {
     #[cfg(feature = "logging")]
-    debug!("Linking {} frames into timeline", frames.len());
+    tracing::debug!("Linking {} frames into timeline", frames.len());
 
     if frames.is_empty() {
         return Timeline {
@@ -67,14 +136,14 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
 
     if first_frames.is_empty() {
         #[cfg(feature = "logging")]
-        warn!("No first frame found (prev_hash = 0), attempting to reconstruct anyway");
+        tracing::warn!("No first frame found (prev_hash = 0), attempting to reconstruct anyway");
 
         return reconstruct_without_first(frame_map);
     }
 
     if first_frames.len() > 1 {
         #[cfg(feature = "logging")]
-        warn!("Multiple first frames found, using lowest frame_id");
+        tracing::warn!("Multiple first frames found, using lowest frame_id");
     }
 
     // Start with the first frame (lowest ID if multiple)
@@ -103,7 +172,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
         match next_frame {
             Some(frame) => {
                 #[cfg(feature = "logging")]
-                debug!("Linked frame {} -> {}", current_id, frame.header.frame_id);
+                tracing::debug!("Linked frame {} -> {}", current_id, frame.header.frame_id);
 
                 visited.insert(frame.header.frame_id, true);
                 ordered_frames.push(frame.clone());
@@ -119,7 +188,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
 
                 if !unvisited.is_empty() {
                     #[cfg(feature = "logging")]
-                    warn!(
+                    tracing::warn!(
                         "Gap detected after frame {}: {} unvisited frames remain",
                         current_id,
                         unvisited.len()
@@ -154,7 +223,7 @@ pub fn link_frames(frames: Vec<Frame>) -> Timeline {
         .collect();
 
     #[cfg(feature = "logging")]
-    debug!(
+    tracing::debug!(
         "Timeline reconstruction complete: {} ordered frames, {} gaps, {} orphans",
         ordered_frames.len(),
         gaps.len(),
@@ -202,6 +271,167 @@ fn reconstruct_without_first(frame_map: BTreeMap<u64, Frame>) -> Timeline {
 pub fn link_located_frames(located_frames: Vec<LocatedFrame>) -> Timeline {
     let frames: Vec<Frame> = located_frames.into_iter().map(|lf| lf.frame).collect();
     link_frames(frames)
+}
+
+/// Analyze a set of frames and produce a detailed report
+pub fn analyze_timeline(frames: Vec<Frame>) -> TimelineReport {
+    let timeline = link_frames(frames);
+    build_report_from_timeline(&timeline, None)
+}
+
+/// Analyze located frames (with offsets) to include byte-offset recipes
+pub fn analyze_located_frames(located_frames: Vec<LocatedFrame>) -> TimelineReport {
+    let frames: Vec<Frame> = located_frames.iter().map(|lf| lf.frame.clone()).collect();
+    let timeline = link_frames(frames);
+    build_report_from_timeline(&timeline, Some(&located_frames))
+}
+
+fn build_report_from_timeline(
+    timeline: &Timeline,
+    located: Option<&[LocatedFrame]>,
+) -> TimelineReport {
+    // Build map: frame_id -> frame and hash -> frame_id
+    let mut id_map: BTreeMap<u64, &Frame> = BTreeMap::new();
+    let mut hash_to_id: BTreeMap<[u8; BLAKE3_HASH_SIZE], u64> = BTreeMap::new();
+
+    for f in timeline.frames.iter().chain(timeline.orphans.iter()) {
+        id_map.insert(f.header.frame_id, f);
+        hash_to_id.insert(f.compute_hash(), f.header.frame_id);
+    }
+
+    // Classify gaps
+    let mut gap_details = Vec::new();
+    for g in &timeline.gaps {
+        let reason = if g.after != g.before + 1 {
+            GapReason::MissingById
+        } else {
+            // If both frames exist, check backlink
+            match (id_map.get(&g.before), id_map.get(&g.after)) {
+                (Some(prev), Some(next)) => {
+                    let expected = prev.compute_hash();
+                    if next.header.prev_hash == expected {
+                        // Strictly contiguous by ID with matching hash shouldn't be a gap,
+                        // but if it is in the list, default to MissingById for safety
+                        GapReason::MissingById
+                    } else {
+                        GapReason::MissingByHash
+                    }
+                }
+                _ => GapReason::MissingById,
+            }
+        };
+        gap_details.push(GapDetail {
+            gap: g.clone(),
+            reason,
+        });
+    }
+
+    // Conflicts: multiple frames that reference the same predecessor's hash
+    let mut preds_to_successors: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+    for f in id_map.values() {
+        if let Some(&pred_id) = hash_to_id.get(&f.header.prev_hash) {
+            preds_to_successors
+                .entry(pred_id)
+                .or_default()
+                .push(f.header.frame_id);
+        }
+    }
+    let mut conflicts = Vec::new();
+    for (pred, succs) in preds_to_successors {
+        if succs.len() > 1 {
+            let mut contenders = succs.clone();
+            contenders.sort_unstable();
+            conflicts.push(ChainConflict {
+                at: pred,
+                contenders,
+            });
+        }
+    }
+
+    // Orphan clusters: connected components among orphans linking by hash relationships
+    let orphan_set: BTreeSet<u64> = timeline.orphans.iter().map(|f| f.header.frame_id).collect();
+    let mut orphan_links: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+    for f in &timeline.orphans {
+        let fid = f.header.frame_id;
+        // Link to predecessor if it is also an orphan
+        if let Some(&pred_id) = hash_to_id.get(&f.header.prev_hash) {
+            if orphan_set.contains(&pred_id) {
+                orphan_links.entry(fid).or_default().push(pred_id);
+                orphan_links.entry(pred_id).or_default().push(fid);
+            }
+        }
+        // Link to successors among orphans
+        for (&h, &hid) in &hash_to_id {
+            if orphan_set.contains(&hid) && f.header.prev_hash == h {
+                // already handled by predecessor check above when roles swap
+            }
+        }
+    }
+    // BFS components
+    let mut visited = BTreeSet::new();
+    let mut orphan_clusters = Vec::new();
+    for &fid in &orphan_set {
+        if visited.contains(&fid) {
+            continue;
+        }
+        let mut stack = vec![fid];
+        let mut ids = Vec::new();
+        visited.insert(fid);
+        while let Some(u) = stack.pop() {
+            ids.push(u);
+            if let Some(neis) = orphan_links.get(&u) {
+                for &v in neis {
+                    if visited.insert(v) {
+                        stack.push(v);
+                    }
+                }
+            }
+        }
+        ids.sort_unstable();
+        orphan_clusters.push(OrphanCluster { ids });
+    }
+
+    // Recovery recipes
+    let mut recipes = Vec::new();
+    // Insert parity frame suggestion for each gap
+    for gd in &gap_details {
+        let r = RecoveryRecipe::InsertParityFrame {
+            between: (gd.gap.before, gd.gap.after),
+            reason: format!("gap detected: {:?}", gd.reason),
+        };
+        recipes.push(r);
+    }
+    // Rewind/advance offsets if we have offsets
+    if let Some(locs) = located {
+        // Build offset map and size map by frame_id
+        let mut off: BTreeMap<u64, (usize, usize)> = BTreeMap::new();
+        for lf in locs.iter() {
+            off.insert(lf.frame.header.frame_id, (lf.offset, lf.size));
+        }
+        for gd in &gap_details {
+            if let (Some((off_before, size_before)), Some((off_after, _))) =
+                (off.get(&gd.gap.before), off.get(&gd.gap.after))
+            {
+                let expected_end = off_before + size_before;
+                let actual_start = *off_after;
+                let delta = actual_start as isize - expected_end as isize;
+                let r = RecoveryRecipe::RewindOffset {
+                    near_frame: gd.gap.after,
+                    by_bytes: delta,
+                    reason: String::from("non-contiguous offsets across gap"),
+                };
+                recipes.push(r);
+            }
+        }
+    }
+
+    TimelineReport {
+        timeline: timeline.clone(),
+        gap_details,
+        conflicts,
+        orphan_clusters,
+        recipes,
+    }
 }
 
 /// Verify back-link consistency of a timeline
@@ -303,6 +533,91 @@ impl Timeline {
         }
         None
     }
+}
+
+/// Render a TimelineReport as a Graphviz DOT string
+pub fn report_to_dot(report: &TimelineReport) -> String {
+    use core::fmt::Write as _;
+    let mut s = String::new();
+    let _ = writeln!(&mut s, "digraph timeline {{");
+    let _ = writeln!(&mut s, "  rankdir=LR;");
+
+    // Nodes: ordered frames
+    for f in &report.timeline.frames {
+        let _ = writeln!(
+            &mut s,
+            "  {} [label=\"{}\"];",
+            f.header.frame_id, f.header.frame_id
+        );
+    }
+    // Orphan nodes grouped into clusters
+    for (idx, cluster) in report.orphan_clusters.iter().enumerate() {
+        let _ = writeln!(&mut s, "  subgraph cluster_orphans_{} {{", idx);
+        let _ = writeln!(&mut s, "    label=\"orphan cluster #{}\";", idx);
+        let _ = writeln!(&mut s, "    style=dashed; color=gray;");
+        for id in &cluster.ids {
+            let _ = writeln!(&mut s, "    {} [style=filled, fillcolor=lightgray];", id);
+        }
+        let _ = writeln!(&mut s, "  }}");
+    }
+
+    // Edges: ordered links
+    for win in report.timeline.frames.windows(2) {
+        let a = win[0].header.frame_id;
+        let b = win[1].header.frame_id;
+        let _ = writeln!(&mut s, "  {} -> {};", a, b);
+    }
+
+    // Gaps with reasons
+    for gd in &report.gap_details {
+        let label = match gd.reason {
+            GapReason::MissingById => "gap: missing-by-id",
+            GapReason::MissingByHash => "gap: missing-by-hash",
+        };
+        let _ = writeln!(
+            &mut s,
+            "  {} -> {} [style=dashed, color=red, label=\"{}\"];",
+            gd.gap.before, gd.gap.after, label
+        );
+    }
+
+    // Conflicts at a predecessor
+    for c in &report.conflicts {
+        for succ in &c.contenders {
+            let _ = writeln!(
+                &mut s,
+                "  {} -> {} [style=dotted, color=orange, label=\"conflict\"];",
+                c.at, succ
+            );
+        }
+    }
+
+    // Recovery recipes as notes
+    for (i, r) in report.recipes.iter().enumerate() {
+        match r {
+            RecoveryRecipe::InsertParityFrame { between, reason } => {
+                let _ = writeln!(
+                    &mut s,
+                    "  recipe_{} [shape=note, label=\"insert parity between {} and {}\\n{}\", color=blue];",
+                    i, between.0, between.1, reason
+                );
+            }
+            RecoveryRecipe::RewindOffset {
+                near_frame,
+                by_bytes,
+                reason,
+            } => {
+                let _ = writeln!(
+                    &mut s,
+                    "  recipe_{} [shape=note, label=\"rewind offset near {} by {} bytes\\n{}\", color=blue];",
+                    i, near_frame, by_bytes, reason
+                );
+            }
+        }
+    }
+
+    let _ = writeln!(&mut s, "}}");
+    s
 }
 
 #[cfg(test)]

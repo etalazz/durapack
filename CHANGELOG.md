@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `InterleaveParams`, `interleave_bytes`, `deinterleave_bytes` for writer/reader-side striping
   - Tests covering round-trip interleave/deinterleave
 - README: documented interleaving guidance (writer/reader) and linked functions.
+- Timeline analysis and visualization:
+  - Core adds `analyze_timeline`, `analyze_located_frames`, and `TimelineReport` with `gap_details` (reasons), `conflicts`, `orphan_clusters`, and `recipes` (operator hints)
+  - Core exports `report_to_dot(&TimelineReport)` to render Graphviz DOT with labeled gaps, conflicts, clusters, and note-shaped recipes
+  - CLI `timeline` adds `--analyze` to include analysis in JSON (new `analysis` section) and to emit richer DOT when combined with `--dot`
 
 ## [0.2.3] - 2025-11-02
 

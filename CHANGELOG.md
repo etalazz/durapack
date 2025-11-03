@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pack`: `--fec-rs-data N` and `--fec-rs-parity K` emit K parity frames after each N data frames; writes a sidecar JSON index (`--fec-index-out`, defaults to `<output>.fec.json`).
   - `timeline`: `--fec-index <path>` annotates DOT output with RS N+K clusters; minimal attachment in JSON when `--analyze` is not used.
   - `verify`: `--fec-index <path>` and `--rs-repair` simulate reconstructability per RS block (report-only).
+  - `fec`: post-facto parity injection tool that scans an existing file and appends RS parity frames per block (`--n-data N --k-parity K`), with `--dry-run` and sidecar output.
 - Benchmarks:
   - New `fec` benchmark in `durapack-core/benches/fec.rs` (behind `fec-rs`) measuring RS encode across payload sizes.
 

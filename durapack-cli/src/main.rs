@@ -74,6 +74,33 @@ enum Commands {
         fec_index_out: Option<String>,
     },
 
+    /// Post-facto parity injection: compute RS parity over existing file and append parity frames
+    Fec {
+        /// Input .durp file ("-" for stdin)
+        #[arg(short, long)]
+        input: String,
+
+        /// Output file to write (defaults to appending to input if omitted)
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// RS data shard count (N). Requires build with `--features fec-rs`.
+        #[arg(long, requires = "k_parity")]
+        n_data: usize,
+
+        /// RS parity shard count (K). Requires build with `--features fec-rs`.
+        #[arg(long, requires = "n_data")]
+        k_parity: usize,
+
+        /// Write/update FEC sidecar index JSON at this path
+        #[arg(long)]
+        fec_index_out: Option<String>,
+
+        /// Dry-run (compute but do not write frames); still writes sidecar if requested
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
+
     /// Scan damaged file and recover frames
     Scan {
         /// Input file to scan ("-" for stdin)
@@ -188,6 +215,22 @@ fn main() -> Result<()> {
             progress,
             fec_rs_data.zip(fec_rs_parity),
             fec_index_out.as_deref(),
+        ),
+
+        Commands::Fec {
+            input,
+            output,
+            n_data,
+            k_parity,
+            fec_index_out,
+            dry_run,
+        } => commands::fec::inject_parity(
+            &input,
+            output.as_deref(),
+            n_data,
+            k_parity,
+            fec_index_out.as_deref(),
+            dry_run,
         ),
 
         Commands::Scan {

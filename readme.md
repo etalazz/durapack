@@ -130,6 +130,7 @@ cargo install durapack-cli
 - **`scan`**: Scan damaged file → JSON/JSONL records of recovered frames.
 - **`verify`**: Check links, hashes, and report gaps.
 - **`timeline`**: Rethread and export ordered result (JSON or Graphviz DOT).
+- **`fec`**: Post-facto parity injection (requires build with `--features fec-rs`).
 
 ### New CLI ergonomics
 
@@ -256,6 +257,30 @@ Example output (truncated):
      Include detailed analysis in outputs. JSON gains `analysis` with `gap_reasons`, `conflicts`, `orphan_clusters`, and `recipes`. With `--dot`, the graph includes labeled gaps, conflict edges, orphan clusters, and note-shaped recipe hints.
   - --fec-index <path>
     Annotate DOT with RS clusters (N+K) if a sidecar is provided.
++
++- fec (post-facto parity injection; requires build with `--features fec-rs`)
++  - -i, --input <FILE|->
++    Input .durp file to protect.
++  - -o, --output <FILE>
++    Output file; if omitted, appends parity to the input file.
++  - --n-data <N>
++    RS data shard count.
++  - --k-parity <K>
++    RS parity shard count.
++  - --fec-index-out <path>
++    Write/update sidecar JSON mapping blocks and parity frame IDs.
++  - --dry-run (default: false)
++    Compute parity without writing frames; still emits sidecar if requested.
++
++Example:
++
++```bat
++cargo run -p durapack-cli --features fec-rs -- fec ^
++  --input out.durp ^
++  --n-data 8 ^
++  --k-parity 2 ^
++  --fec-index-out out.durp.fec.json
++```
 
  Quick help
 

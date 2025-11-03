@@ -5,7 +5,7 @@
     "payload_len": 7,
     "size": 89,
     "payload": "{\"k\":1}",
-    "confidence": 1.0
+    "confidence": 0.95
   },
   {
     "offset": 89,

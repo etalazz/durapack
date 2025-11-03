@@ -62,11 +62,11 @@ enum Commands {
         progress: bool,
 
         /// FEC: number of data frames per block (Reed–Solomon). Requires durapack-core with `fec-rs` feature.
-        #[arg(long, requires = "fec-rs-parity")]
+        #[arg(long, requires = "fec_rs_parity")]
         fec_rs_data: Option<usize>,
 
         /// FEC: number of parity frames per block (Reed–Solomon). Requires durapack-core with `fec-rs` feature.
-        #[arg(long, requires = "fec-rs-data")]
+        #[arg(long, requires = "fec_rs_data")]
         fec_rs_parity: Option<usize>,
 
         /// Path to write FEC sidecar index (JSON). Defaults to <output>.fec.json when FEC is enabled.

@@ -22,6 +22,7 @@ pub mod decoder;
 pub mod encoder;
 pub mod error;
 pub mod fec;
+pub mod interleave;
 pub mod linker;
 pub mod scanner;
 pub mod types;

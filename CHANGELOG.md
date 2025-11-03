@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Burst-error mitigation helpers in `durapack-core::interleave`:
+  - `InterleaveParams`, `interleave_bytes`, `deinterleave_bytes` for writer/reader-side striping
+  - Tests covering round-trip interleave/deinterleave
+- README: documented interleaving guidance (writer/reader) and linked functions.
+
 ## [0.2.3] - 2025-11-02
 
 ### Added

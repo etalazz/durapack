@@ -21,6 +21,7 @@ hashbrown = { version = "0.14", default-features = false }
 proptest.workspace = true
 criterion.workspace = true
 hex = "0.4"
+rand = "0.8"
 
 [features]
 # Default to std for convenient I/O and collections

@@ -23,6 +23,7 @@
 12. [Versioning and Compatibility](#12-versioning-and-compatibility)
 13. [Implementation Requirements](#13-implementation-requirements)
 14. [Test Vectors](#14-test-vectors)
+15. [Interleaving Guidance (Burst-error Mitigation)](#15-interleaving-guidance-burst-error-mitigation)
 
 ---
 
@@ -762,41 +763,36 @@ Expected Timeline Output:
 
 ---
 
-## 15. Security Considerations
+## 15. Interleaving Guidance (Burst-error Mitigation)
 
-### 15.1 Threat Model
+This section is informative and defines a recommended application-level technique to reduce the impact of burst errors without changing the on-disk frame format.
 
-**Out of scope:**
-- Protection against active attackers modifying data
-- Encryption of payload contents
-- Authentication of sender
+### 15.1 Motivation
 
-**In scope:**
-- Detection of accidental corruption
-- Tamper evidence via hash chains
-- Prevention of denial-of-service via size limits
+Burst errors (e.g., tape dropouts, RF fades, disk bad blocks) tend to corrupt contiguous runs of bytes. If an application writes large payloads into single frames, a burst can destroy the entire payload. By striping the payload across multiple consecutive frames, a burst damages only small portions of several frames, improving the chance that useful data survives and can be recovered.
 
-### 15.2 Denial of Service
+### 15.2 Writer-side Interleaving
 
-**Attack:** Send frames with very large payload_len values.
+Applications may split a contiguous byte stream into `group` stripes in round-robin blocks of `shard_len` bytes and then place each stripe into consecutive frames. The Durapack core provides helpers:
 
-**Mitigation:** MAX_PAYLOAD_SIZE limit (16 MiB - 1 KiB).
+- `durapack_core::interleave::InterleaveParams { group, shard_len }`
+- `durapack_core::interleave::interleave_bytes(&data, params) -> Vec<Bytes>`
 
-**Attack:** Send stream with many false markers.
+Emit the resulting stripes over `group` consecutive frames, in lane order (0..group-1). Include the `group` and `shard_len` values in your metadata (e.g., in a superframe index or application header) so readers can reassemble.
 
-**Mitigation:** Quick validation rejects false frames.
+### 15.3 Reader-side Deinterleaving
 
-### 15.3 Hash Collision Attacks
+To reconstruct the original contiguous byte stream, collect the stripes in lane order and call:
 
-**Attack:** Find frame B with same BLAKE3 hash as frame A.
+- `durapack_core::interleave::deinterleave_bytes(&stripes, params) -> Bytes`
 
-**Mitigation:** BLAKE3 collision resistance (2^128 security level).
+The function pulls blocks of `shard_len` from each lane in round-robin order until all stripes are consumed, yielding the original data.
 
-### 15.4 Timing Attacks
+### 15.4 Compatibility
 
-**Consideration:** BLAKE3 verification should use constant-time comparison.
-
-**Recommendation:** Implementations SHOULD use constant-time comparison for trailer verification.
+- The Durapack on-disk format is unchanged; interleaving is an application-level technique.
+- Interleaving parameters should be discoverable (e.g., stored in application metadata or superframe summaries) to ensure interoperability.
+- Readers that do not implement deinterleaving will still decode individual frames normally but will see striped payloads.
 
 ---
 
@@ -917,4 +913,3 @@ Implementations may be released under any license compatible with the reference 
 ---
 
 **End of Specification**
-

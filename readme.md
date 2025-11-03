@@ -26,10 +26,10 @@ Durapack is a general-purpose framing and data repair library. It **does not pro
 - [✨ Features](#-features)
 - [🎯 Use Cases](#-use-cases)
 - [🚀 Quick Start](#-quick-start)
-- [🛠️ CLI Tool](#️-cli-tool)
-- [🏗️ Architecture](#️-architecture)
+- [🛠️ CLI Tool](#cli-tool)
+- [🏗️ Architecture](#architecture)
 - [📦 Frame Format](#-frame-format)
-- [⏱️ Performance](#️-performance)
+- [⏱️ Performance](#-performance)
 - [✅ Testing](#-testing)
 - [📚 Documentation](#-documentation)
 - [🏆 Why Durapack is Better](#-why-durapack-is-better)
@@ -47,7 +47,8 @@ Durapack is a general-purpose framing and data repair library. It **does not pro
 - **Zero-copy core paths**: Bytes/BytesMut across encoder/decoder/scanner to avoid extra copies.
 - **SIMD-accelerated scanner**: memchr/memmem-backed marker search (auto-uses SSE2/AVX2/NEON).
 - **no_std + alloc**: `durapack-core` builds without `std`; enable `std` feature for I/O convenience.
-- **Small, auditable core**: Minimal dependencies, pure Rust.
+- **Optional robust sync**: Preamble + low-autocorrelation sync word with bounded-Hamming fallback in scanner.
+- **Burst-error mitigation helpers**: Interleave/deinterleave utilities to spread bursts across frames.
 
 ## 🎯 Use Cases
 
@@ -258,6 +259,7 @@ Each frame consists of:
 - Zero-copy encoder/decoder/scanner paths using Bytes/BytesMut.
 - SIMD-accelerated marker search via memchr::memmem (auto-dispatch to SSE2/AVX2/NEON).
 - Criterion benches with realistic corpora (scanner + encoding).
+- Burst-error mitigation helpers: `durapack_core::interleave::{interleave_bytes, deinterleave_bytes}`.
 
 Run benchmarks:
 
@@ -276,6 +278,18 @@ The scanner assigns a confidence score [0.0, 1.0] to each recovered frame based 
 - Size sanity and neighbor consistency (backlinks, contiguous spacing)
 
 You can filter outputs and carving by `--min-confidence`.
+
+### Burst-error mitigation (interleaving)
+
+Writer-side guidance:
+- Choose a stripe `group` (number of consecutive frames to spread data across) and `shard_len` (bytes per stripe per round).
+- Use `interleave_bytes(&data, InterleaveParams { group, shard_len })` to split payload across upcoming frames.
+- Include the parameters in your metadata or superframe index so readers can reassemble.
+
+Reader-side guidance:
+- Collect stripes for the same content (e.g., from consecutive frames) and call `deinterleave_bytes(&stripes, params)` to reconstruct the original.
+
+---
 
 ## ✅ Testing
 

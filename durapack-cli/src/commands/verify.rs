@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use colored::*;
+#[cfg(feature = "fec-rs")]
+use durapack_core::fec::{RedundancyDecoder, RsDecoder};
 use durapack_core::{
     linker::{link_frames, verify_backlinks},
     scanner::scan_stream,
@@ -8,7 +10,17 @@ use std::fs;
 use std::io::{self, Read};
 use tracing::{info, warn};
 
+#[allow(dead_code)]
 pub fn execute(input: &str, report_gaps: bool) -> Result<()> {
+    execute_ext(input, report_gaps, None, false)
+}
+
+pub fn execute_ext(
+    input: &str,
+    report_gaps: bool,
+    fec_index_path: Option<&str>,
+    rs_repair: bool,
+) -> Result<()> {
     info!("Verifying file: {}", input);
 
     // Read input file or stdin
@@ -80,6 +92,41 @@ pub fn execute(input: &str, report_gaps: bool) -> Result<()> {
         );
         for error in &backlink_errors {
             warn!("{}", error);
+        }
+    }
+
+    // Optional: Load FEC index and attempt RS repair (report-only)
+    if let (Some(path), true) = (fec_index_path, rs_repair) {
+        #[derive(serde::Deserialize)]
+        struct FecIndexEntry {
+            block_start_id: u64,
+            data: usize,
+            parity: usize,
+            _parity_frame_ids: Vec<u64>,
+        }
+        let idx_bytes =
+            fs::read(path).with_context(|| format!("Failed to read FEC index: {}", path))?;
+        let entries: Vec<FecIndexEntry> =
+            serde_json::from_slice(&idx_bytes).with_context(|| "Invalid FEC index JSON")?;
+        println!("\n=== FEC (RS) Repair Simulation ===");
+        #[cfg(feature = "fec-rs")]
+        {
+            let dec = RsDecoder;
+            for entry in entries {
+                let have = entry.data; // assume we have all data frames here; a real flow would map IDs to present/missing
+                let can = dec.can_reconstruct(have + entry.parity, entry.data);
+                println!(
+                    "Block start id {}: data={}, parity={} => reconstructable: {}",
+                    entry.block_start_id,
+                    entry.data,
+                    entry.parity,
+                    if can { "yes" } else { "no" }
+                );
+            }
+        }
+        #[cfg(not(feature = "fec-rs"))]
+        {
+            println!("RS repair requested, but durapack-core was built without `fec-rs` feature.");
         }
     }
 

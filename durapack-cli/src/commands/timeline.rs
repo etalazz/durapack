@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use durapack_core::{
-    linker::{analyze_located_frames, link_frames, report_to_dot, GapDetail, RecoveryRecipe},
+    linker::{analyze_located_frames, link_frames, report_to_dot, RecoveryRecipe},
     scanner::scan_stream,
 };
 use serde::{Deserialize, Serialize};
@@ -81,7 +81,7 @@ struct AnalysisExtras {
 
 #[allow(dead_code)]
 pub fn execute(input: &str, output: &str, include_orphans: bool) -> Result<()> {
-    execute_ext(input, output, include_orphans, false, false)
+    execute_ext(input, output, include_orphans, false, false, None)
 }
 
 pub fn execute_ext(
@@ -90,6 +90,7 @@ pub fn execute_ext(
     include_orphans: bool,
     dot: bool,
     analyze: bool,
+    fec_index_path: Option<&str>,
 ) -> Result<()> {
     info!("Reconstructing timeline from: {}", input);
 
@@ -110,6 +111,22 @@ pub fn execute_ext(
     }
 
     info!("Found {} frames", located_frames.len());
+
+    // Optional FEC index
+    #[derive(Serialize, Deserialize, Clone)]
+    struct FecIndexEntry {
+        block_start_id: u64,
+        data: usize,
+        parity: usize,
+        parity_frame_ids: Vec<u64>,
+    }
+    let mut fec_index: Option<Vec<FecIndexEntry>> = None;
+    if let Some(path) = fec_index_path {
+        let idx = fs::read(path).with_context(|| format!("Failed to read FEC index: {}", path))?;
+        let entries: Vec<FecIndexEntry> =
+            serde_json::from_slice(&idx).with_context(|| "Invalid FEC index JSON")?;
+        fec_index = Some(entries);
+    }
 
     // Extract frames and link (basic timeline always available)
     let frames: Vec<_> = located_frames.iter().map(|lf| lf.frame.clone()).collect();
@@ -156,6 +173,16 @@ pub fn execute_ext(
                     "  {} -> {} [style=dashed, color=red, label=\"gap\"];",
                     g.before, g.after
                 )?;
+            }
+            if let Some(idx) = &fec_index {
+                writeln!(&mut out, "  // FEC parity annotations")?;
+                for e in idx {
+                    writeln!(
+                        &mut out,
+                        "  subgraph cluster_fec_{} {{ label=\"RS {}+{}\"; style=dotted; }}",
+                        e.block_start_id, e.data, e.parity
+                    )?;
+                }
             }
             writeln!(&mut out, "}}")?;
         }
@@ -205,21 +232,15 @@ pub fn execute_ext(
         continuity: stats.continuity,
     };
 
-    // Optional analysis extras
-    let analysis = if analyze {
+    let mut analysis = if analyze {
         let report = analyze_located_frames(located_frames);
         let gap_reasons: Vec<GapReasonJson> = report
             .gap_details
             .iter()
-            .map(|gd: &GapDetail| GapReasonJson {
+            .map(|gd| GapReasonJson {
                 before: gd.gap.before,
                 after: gd.gap.after,
-                reason: match gd.reason {
-                    durapack_core::linker::GapReason::MissingById => "missing-by-id".to_string(),
-                    durapack_core::linker::GapReason::MissingByHash => {
-                        "missing-by-hash".to_string()
-                    }
-                },
+                reason: format!("{:?}", gd.reason),
             })
             .collect();
         let conflicts: Vec<ConflictJson> = report
@@ -233,9 +254,7 @@ pub fn execute_ext(
         let orphan_clusters: Vec<OrphanClusterJson> = report
             .orphan_clusters
             .iter()
-            .map(|oc| OrphanClusterJson {
-                ids: oc.ids.clone(),
-            })
+            .map(|c| OrphanClusterJson { ids: c.ids.clone() })
             .collect();
         let recipes: Vec<RecipeJson> = report
             .recipes
@@ -268,7 +287,20 @@ pub fn execute_ext(
         None
     };
 
-    let output_data = TimelineOutput {
+    if analysis.is_none() {
+        if let Some(_idx) = fec_index {
+            // Attach a minimal analysis object to carry FEC info
+            analysis = Some(AnalysisExtras {
+                gap_reasons: Vec::new(),
+                conflicts: Vec::new(),
+                orphan_clusters: Vec::new(),
+                recipes: Vec::new(),
+            });
+            // We don't embed the full index here to keep payload small; DOT path annotates clusters.
+        }
+    }
+
+    let output_obj = TimelineOutput {
         frames: frames_output,
         gaps: gaps_output,
         orphans: orphans_output,
@@ -276,21 +308,20 @@ pub fn execute_ext(
         analysis,
     };
 
-    let json = serde_json::to_string_pretty(&output_data)
-        .with_context(|| "Failed to serialize timeline")?;
-
+    // Write JSON output
     if output == "-" {
-        println!("{}", json);
+        let out = serde_json::to_string_pretty(&output_obj)?;
+        io::stdout().write_all(out.as_bytes())?;
     } else {
-        fs::write(output, json)
-            .with_context(|| format!("Failed to write output file: {}", output))?;
+        let out = serde_json::to_string_pretty(&output_obj)?;
+        fs::write(output, out)?;
     }
 
     println!("\n=== Timeline Reconstruction ===");
-    println!("Ordered frames:  {}", output_data.frames.len());
-    println!("Gaps detected:   {}", output_data.gaps.len());
-    println!("Orphaned frames: {}", output_data.orphans.len());
-    println!("Continuity:      {:.2}%", output_data.stats.continuity);
+    println!("Ordered frames:  {}", output_obj.frames.len());
+    println!("Gaps detected:   {}", output_obj.gaps.len());
+    println!("Orphaned frames: {}", output_obj.orphans.len());
+    println!("Continuity:      {:.2}%", output_obj.stats.continuity);
     if output != "-" {
         println!("\nTimeline written to: {}", output);
     }

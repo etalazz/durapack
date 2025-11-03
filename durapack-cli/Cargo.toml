@@ -12,7 +12,7 @@ name = "durapack"
 path = "src/main.rs"
 
 [dependencies]
-durapack-core = { path = "../durapack-core" }
+durapack-core = { path = "../durapack-core", default-features = true, features = [] }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,6 +23,10 @@ tracing-subscriber.workspace = true
 hex = "0.4"
 indicatif = "0.17"
 colored = "2.1"
+
+[features]
+default = []
+fec-rs = ["durapack-core/fec-rs"]
 
 [dev-dependencies]
 tempfile = "3.8"

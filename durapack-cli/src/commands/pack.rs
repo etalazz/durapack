@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use durapack_core::encoder::FrameBuilder;
+#[cfg(feature = "fec-rs")]
+use durapack_core::fec::{FecBlock, RedundancyEncoder, RsEncoder};
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -21,6 +23,8 @@ pub fn execute(input: &str, output: &str, use_blake3: bool, start_id: u64) -> Re
         ChunkStrategy::Aggregate,
         None,
         false,
+        None,
+        None,
     )
 }
 
@@ -34,6 +38,8 @@ pub fn execute_ext(
     chunk_strategy: ChunkStrategy,
     rate_limit: Option<u64>,
     progress: bool,
+    fec_rs: Option<(usize, usize)>,
+    fec_index_out: Option<&str>,
 ) -> Result<()> {
     info!("Packing data from {} to {}", input, output);
 
@@ -65,6 +71,16 @@ pub fn execute_ext(
     let mut output_data = Vec::new();
     let mut prev_hash = [0u8; 32];
 
+    // FEC sidecar structure
+    #[derive(serde::Serialize)]
+    struct FecIndexEntry {
+        block_start_id: u64,
+        data: usize,
+        parity: usize,
+        parity_frame_ids: Vec<u64>,
+    }
+    let mut fec_index: Vec<FecIndexEntry> = Vec::new();
+
     // Progress bar
     let pb = if progress {
         let pb = indicatif::ProgressBar::new(payloads.len() as u64);
@@ -83,8 +99,12 @@ pub fn execute_ext(
     let start_time = Instant::now();
     let mut bytes_written_total: u64 = 0;
 
-    for (i, payload) in payloads.iter().enumerate() {
-        let frame_id = start_id + i as u64;
+    // Buffer frames in a block if FEC enabled
+    let mut block_frames: Vec<durapack_core::types::Frame> = Vec::new();
+    let mut next_frame_id = start_id;
+
+    for payload in payloads.iter() {
+        let frame_id = next_frame_id;
 
         // Serialize payload to JSON bytes
         let payload_bytes = serde_json::to_vec(payload)
@@ -94,12 +114,8 @@ pub fn execute_ext(
             .payload(Bytes::from(payload_bytes))
             .prev_hash(prev_hash);
 
-        if i == 0 {
+        if frame_id == start_id {
             builder = builder.mark_first();
-        }
-
-        if i == payloads.len() - 1 {
-            builder = builder.mark_last();
         }
 
         if use_blake3 {
@@ -120,6 +136,49 @@ pub fn execute_ext(
         output_data.extend_from_slice(&encoded);
         bytes_written_total += encoded.len() as u64;
 
+        // FEC block accumulation
+        if let Some((n, k)) = fec_rs {
+            block_frames.push(frame_struct.clone());
+            if block_frames.len() == n {
+                // Emit parity frames for this block
+                #[cfg(feature = "fec-rs")]
+                {
+                    let enc = RsEncoder::new(n, k);
+                    let blocks = enc.encode_batch(&block_frames, 0).context(format!(
+                        "RS encode failed for block starting at {}",
+                        frame_id + 1 - n as u64
+                    ))?;
+                    let parity_blocks: Vec<FecBlock> = blocks.into_iter().skip(n).collect();
+                    let mut parity_ids = Vec::new();
+                    for pb in parity_blocks {
+                        // Wrap parity shard into a frame with IS_SUPERFRAME flag off; mark trailer
+                        let mut b = FrameBuilder::new(next_frame_id + 1)
+                            .payload(Bytes::from(pb.data))
+                            .prev_hash(prev_hash);
+                        if use_blake3 {
+                            b = b.with_blake3();
+                        } else {
+                            b = b.with_crc32c();
+                        }
+                        let parity_frame = b.build_struct()?;
+                        prev_hash = parity_frame.compute_hash();
+                        let enc_bytes = durapack_core::encoder::encode_frame_struct(&parity_frame)?;
+                        output_data.extend_from_slice(&enc_bytes);
+                        bytes_written_total += enc_bytes.len() as u64;
+                        next_frame_id += 1;
+                        parity_ids.push(parity_frame.header.frame_id);
+                    }
+                    fec_index.push(FecIndexEntry {
+                        block_start_id: frame_id + 1 - n as u64,
+                        data: n,
+                        parity: k,
+                        parity_frame_ids: parity_ids,
+                    });
+                }
+                block_frames.clear();
+            }
+        }
+
         // Rate limiting (simple leaky bucket)
         if let Some(bps) = rate_limit {
             let elapsed = start_time.elapsed();
@@ -136,7 +195,11 @@ pub fn execute_ext(
         }
 
         info!("Packed frame {} ({} bytes)", frame_id, encoded.len());
+        next_frame_id += 1;
     }
+
+    // If there are leftover frames in a partial block, you can choose to emit parity or skip.
+    // We skip parity for partial blocks by default.
 
     if let Some(pb) = &pb {
         pb.finish_with_message("done");
@@ -149,6 +212,22 @@ pub fn execute_ext(
     } else {
         fs::write(output, &output_data)
             .with_context(|| format!("Failed to write output file: {}", output))?;
+    }
+
+    // Write FEC index sidecar if requested or implied
+    if let Some((n, k)) = fec_rs {
+        let sidecar_path = fec_index_out
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("{}.fec.json", output));
+        let json = serde_json::to_string_pretty(&fec_index)?;
+        fs::write(&sidecar_path, json)
+            .with_context(|| format!("Failed to write FEC index: {}", sidecar_path))?;
+        info!(
+            "Wrote FEC index sidecar: {} (blocks: {})",
+            sidecar_path,
+            fec_index.len()
+        );
+        let _ = (n, k); // silence unused if compiled without feature
     }
 
     info!(

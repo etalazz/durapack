@@ -16,6 +16,8 @@ crc32c = { version = "0.6", default-features = false }
 tracing = { workspace = true, optional = true }
 memchr = { version = "2", default-features = false }
 hashbrown = { version = "0.14", default-features = false }
+# Optional FEC backends
+reed-solomon-erasure = { version = "6", optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
@@ -33,6 +35,10 @@ std = [
 ]
 # logging uses tracing; tracing works in no_std with core support
 logging = ["tracing"]
+# FEC backends (optional)
+fec-rs = ["std", "reed-solomon-erasure"]
+fec-raptorq = []
+fec-ldpc = []
 
 [[example]]
 name = "basic_encode"

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.3] - 2025-11-03
 
 ### Added
 - Burst-error mitigation helpers in `durapack-core::interleave`:
@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Core adds `analyze_timeline`, `analyze_located_frames`, and `TimelineReport` with `gap_details` (reasons), `conflicts`, `orphan_clusters`, and `recipes` (operator hints)
   - Core exports `report_to_dot(&TimelineReport)` to render Graphviz DOT with labeled gaps, conflicts, clusters, and note-shaped recipes
   - CLI `timeline` adds `--analyze` to include analysis in JSON (new `analysis` section) and to emit richer DOT when combined with `--dot`
+- Optional FEC (pluggable):
+  - Reed–Solomon encoder/decoder behind `fec-rs` feature using `reed-solomon-erasure`
+  - Interleaved RS helper to pair with burst-error interleaving
+  - Research flags `fec-raptorq` and `fec-ldpc` (stubs) with export-control note in README
+- CLI FEC wiring and sidecar support (requires building CLI with `--features fec-rs`):
+  - `pack`: `--fec-rs-data N` and `--fec-rs-parity K` emit K parity frames after each N data frames; writes a sidecar JSON index (`--fec-index-out`, defaults to `<output>.fec.json`).
+  - `timeline`: `--fec-index <path>` annotates DOT output with RS N+K clusters; minimal attachment in JSON when `--analyze` is not used.
+  - `verify`: `--fec-index <path>` and `--rs-repair` simulate reconstructability per RS block (report-only).
+- Benchmarks:
+  - New `fec` benchmark in `durapack-core/benches/fec.rs` (behind `fec-rs`) measuring RS encode across payload sizes.
+
+### Notes
+- Default build unaffected; FEC backends and CLI FEC wiring are opt-in via Cargo features.
 
 ## [0.2.3] - 2025-11-02
 

@@ -191,73 +191,83 @@ Example output (truncated):
 
 ### CLI reference (--help)
 
-Global options:
+ Global options:
 
-- -v, --verbose  Enable verbose logging
+ - -v, --verbose  Enable verbose logging
 
-Subcommands and options:
+ Subcommands and options:
 
-- pack
-  - -i, --input <FILE|->
-    Input JSON or JSONL file. Use "-" to read from stdin.
-  - -o, --output <FILE|->
-    Output file for packed frames. Use "-" to write to stdout.
-  - --blake3
-    Use BLAKE3 trailer instead of CRC32C.
-  - --start-id <u64> (default: 1)
-    Starting frame ID for the first frame.
-  - --jsonl (default: false)
-    Interpret input as JSON Lines (one JSON object per line).
-  - --chunk-strategy <jsonl|aggregate> (default: aggregate)
-    Parsing strategy when reading stdin/JSONL.
-  - --rate-limit <bytes/sec>
-    Throttle output to approximately this rate.
-  - --progress (default: false)
-    Show a progress bar during packing.
+ - pack
+   - -i, --input <FILE|->
+     Input JSON or JSONL file. Use "-" to read from stdin.
+   - -o, --output <FILE|->
+     Output file for packed frames. Use "-" to write to stdout.
+   - --blake3
+     Use BLAKE3 trailer instead of CRC32C.
+   - --start-id <u64> (default: 1)
+     Starting frame ID for the first frame.
+   - --jsonl (default: false)
+     Interpret input as JSON Lines (one JSON object per line).
+   - --chunk-strategy <jsonl|aggregate> (default: aggregate)
+     Parsing strategy when reading stdin/JSONL.
+   - --rate-limit <bytes/sec>
+     Throttle output to approximately this rate.
+   - --progress (default: false)
+     Show a progress bar during packing.
+  - --fec-rs-data <N> and --fec-rs-parity <K> (requires building with `--features fec-rs`)
+    Emit K parity frames after each N data frames; sidecar index written via `--fec-index-out` or defaults to `<output>.fec.json`.
+  - --fec-index-out <path>
+    Path to write the FEC sidecar index (JSON).
 
-- scan
-  - -i, --input <FILE|->
-    Input file to scan. Use "-" to read from stdin.
-  - -o, --output <FILE|->
-    Output file. With --jsonl, emits JSON Lines; otherwise pretty JSON. Use "-" to write to stdout.
-  - --stats-only
-    Print statistics only and exit.
-  - --jsonl (default: false)
-    Stream results as JSON Lines (records: Stats, Gap, Frame).
-  - --min-confidence <float>
-    Minimum confidence threshold [0.0-1.0] to report/carve frames.
-  - --carve-payloads <pattern>
-    Write payloads to files; pattern may include {stream} and {frame}.
+ - scan
+   - -i, --input <FILE|->
+     Input file to scan. Use "-" to read from stdin.
+   - -o, --output <FILE|->
+     Output file. With --jsonl, emits JSON Lines; otherwise pretty JSON. Use "-" to write to stdout.
+   - --stats-only
+     Print statistics only and exit.
+   - --jsonl (default: false)
+     Stream results as JSON Lines (records: Stats, Gap, Frame).
+   - --min-confidence <float>
+     Minimum confidence threshold [0.0-1.0] to report/carve frames.
+   - --carve-payloads <pattern>
+     Write payloads to files; pattern may include {stream} and {frame}.
 
-- verify
-  - -i, --input <FILE|->
-    Input file to verify. Use "-" to read from stdin.
-  - --report-gaps
-    Also list detected gaps in the sequence.
+ - verify
+   - -i, --input <FILE|->
+     Input file to verify. Use "-" to read from stdin.
+   - --report-gaps
+     Also list detected gaps in the sequence.
+  - --fec-index <path>
+    Load FEC sidecar for parity block metadata.
+  - --rs-repair
+    Simulate RS reconstructability per block (report-only; requires build with `--features fec-rs`).
 
-- timeline
-  - -i, --input <FILE|->
-    Input file with frames. Use "-" to read from stdin.
-  - -o, --output <FILE|->
-    Output JSON file for the timeline, or "-" for stdout.
-  - --include-orphans
-    Include orphaned frames in the JSON output.
-  - --dot (default: false)
-    Emit a Graphviz DOT graph instead of JSON (to file or stdout).
-  - --analyze (default: false)
-    Include detailed analysis in outputs. JSON gains `analysis` with `gap_reasons`, `conflicts`, `orphan_clusters`, and `recipes`. With `--dot`, the graph includes labeled gaps, conflict edges, orphan clusters, and note-shaped recipe hints.
+ - timeline
+   - -i, --input <FILE|->
+     Input file with frames. Use "-" to read from stdin.
+   - -o, --output <FILE|->
+     Output JSON file for the timeline, or "-" for stdout.
+   - --include-orphans
+     Include orphaned frames in the JSON output.
+   - --dot (default: false)
+     Emit a Graphviz DOT graph instead of JSON (to file or stdout).
+   - --analyze (default: false)
+     Include detailed analysis in outputs. JSON gains `analysis` with `gap_reasons`, `conflicts`, `orphan_clusters`, and `recipes`. With `--dot`, the graph includes labeled gaps, conflict edges, orphan clusters, and note-shaped recipe hints.
+  - --fec-index <path>
+    Annotate DOT with RS clusters (N+K) if a sidecar is provided.
 
-Quick help
+ Quick help
 
-- durapack --help
-- durapack pack --help
-- durapack scan --help
-- durapack verify --help
-- durapack timeline --help
+ - durapack --help
+ - durapack pack --help
+ - durapack scan --help
+ - durapack verify --help
+ - durapack timeline --help
 
----
+ ---
 
-## 🏗️ Architecture
+ ## 🏗️ Architecture
 
 Durapack is organized as a Rust workspace:
 
@@ -283,6 +293,41 @@ Each frame consists of:
 
 > For a deep dive, see the [**Formal Specification (NEW)**](docs/FORMAL_SPEC.md) and [Frame Specification](docs/spec.md).
 
+### Optional Forward Error Correction (FEC)
+
+Durapack can be paired with pluggable, optional FEC at the application layer:
+
+- Reed–Solomon parity frames (feature: `fec-rs`): for every N payload frames, emit K parity frames capable of repairing up to K losses within the block.
+- Interleaved RS: combine with `interleave_bytes` to spread data across frames and RS across stripes for burst-damage media.
+- Research PoC features (behind flags, no implementation): `fec-raptorq`, `fec-ldpc`.
+
+Enabling RS in core (Cargo features):
+
+```bat
+:: Build with Reed–Solomon support
+env RUSTFLAGS= cargo build -p durapack-core --features fec-rs
+```
+
+API sketch (library):
+
+```rust
+use durapack_core::fec::{RedundancyEncoder, RedundancyDecoder};
+#[cfg(feature = "fec-rs")] use durapack_core::fec::{RsEncoder, RsDecoder};
+
+#[cfg(feature = "fec-rs")]
+{
+    // N data frames, K parity frames
+    let enc = RsEncoder::new(N, K);
+    let blocks = enc.encode_batch(&frames, 0)?; // returns N+K blocks
+
+    // drop some blocks ... then recover
+    let dec = RsDecoder;
+    let recovered = dec.decode_batch(&available_blocks, N)?;
+}
+```
+
+Export-control note: Some advanced FEC schemes (e.g., certain LDPC/Raptor variants) may be subject to additional export restrictions. This repository ships only RS by default; research flags are stub-only. You are responsible for compliance with applicable laws.
+
 ---
 
 ## ⏱️ Performance
@@ -297,6 +342,8 @@ Run benchmarks:
 ```bat
 cargo bench -p durapack-core --bench scanner
 cargo bench -p durapack-core --bench encoding
+:: RS FEC benches (requires building with fec-rs)
+cargo bench -p durapack-core --features fec-rs --bench fec
 ```
 
 ### Scanning confidence model
@@ -322,11 +369,23 @@ Reader-side guidance:
 
 ---
 
-## ✅ Testing
+## 🔐 FEC sidecar format (pack)
 
-- **Unit & Integration Tests**: `cargo test --all`
-- **Property-based Tests**: `cargo test --test proptest`
-- **Fuzzing**: `cd durapack-fuzz && cargo test`
+When `pack` is invoked with `--fec-rs-data N --fec-rs-parity K`, the tool writes a sidecar JSON (default `<output>.fec.json`) containing entries like:
+
+```json
+[
+  { "block_start_id": 1, "data": 8, "parity": 2, "parity_frame_ids": [9, 10] },
+  { "block_start_id": 11, "data": 8, "parity": 2, "parity_frame_ids": [19, 20] }
+]
+```
+
+- `block_start_id`: the first frame ID in the RS block (data frames)
+- `data`: N data frames
+- `parity`: K parity frames
+- `parity_frame_ids`: IDs of emitted parity frames for that block
+
+The sidecar lets downstream tools annotate timelines and, in future, attempt automated repairs. Today, `verify --rs-repair` reports whether RS blocks are theoretically reconstructable given N and K.
 
 ---
 

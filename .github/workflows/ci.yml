@@ -42,3 +42,47 @@ jobs:
         if: matrix.featureset != ''
         run: |
           cargo test --workspace --all-targets --no-fail-fast --features "${{ matrix.featureset }}" -- --quiet
+
+  coverage:
+    name: Coverage (llvm-cov)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust (with llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Generate coverage (LCOV)
+        run: |
+          mkdir -p coverage
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov --workspace --exclude durapack-fuzz --all-features \
+            --lcov --output-path coverage/lcov.info \
+            --ignore-filename-regex 'durapack-fuzz'
+
+      - name: Generate coverage (HTML)
+        run: |
+          cargo llvm-cov --workspace --exclude durapack-fuzz --all-features \
+            --html --output-dir coverage/html \
+            --ignore-filename-regex 'durapack-fuzz'
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-llvm-cov
+          path: |
+            coverage/lcov.info
+            coverage/html/

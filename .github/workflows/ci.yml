@@ -10,6 +10,10 @@ jobs:
   build-test:
     name: Build, fmt, clippy, test (Ubuntu)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        featureset: ["", "fec-rs", "ed25519-signatures", "fec-rs ed25519-signatures"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,19 +22,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          cache-on-failure: true
 
       - name: Format check
+        if: matrix.featureset == ''
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Clippy (all features)
+        if: matrix.featureset == ''
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Test
-        run: cargo test --all --no-fail-fast -- --quiet
+      - name: Test (default features)
+        if: matrix.featureset == ''
+        run: cargo test --workspace --all-targets --no-fail-fast -- --quiet
+
+      - name: Test (features)
+        if: matrix.featureset != ''
+        run: |
+          cargo test --workspace --all-targets --no-fail-fast --features "${{ matrix.featureset }}" -- --quiet

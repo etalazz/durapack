@@ -52,6 +52,7 @@ Durapack is a general-purpose framing and data repair library. It **does not pro
 - **Optional robust sync**: Preamble + low-autocorrelation sync word with bounded-Hamming fallback in scanner.
 - **Burst-error mitigation helpers**: Interleave/deinterleave utilities to spread bursts across frames.
 - **Optional authenticity** (no confidentiality): Combined BLAKE3+Ed25519 signature trailer (feature: `ed25519-signatures`).
+- **Transport‑agnostic**: Works the same over files, pipes, or sockets; ideal for lossy links and long-haul replication.
 
 ## 🎯 Use Cases
 
@@ -59,6 +60,17 @@ Durapack is a general-purpose framing and data repair library. It **does not pro
 - **✈️ Black-box forensics**: Recover data from damaged flight recorders.
 - **📡 Tactical networks**: Stitch together partial captures from field units.
 - **🗄️ Long-term archives**: Data that can survive bit rot and media degradation.
+- ### 💹 Financial industry scenarios
+  - **Market data capture (UDP multicast, TAPs)**: Gap‑tolerant ingest of bursty feeds; scanner resyncs quickly and carves intact frames for replay.
+  - **Trading system audit trails**: Durable order lifecycle and OMS/EMS logs; timeline reconstruction calls out gaps/orphans and produces DOT graphs for reviews.
+  - **Compliance archives (e.g., retention/WORM workflows)**: Tamper‑evident chains via frame‑chain hash and optional Ed25519 signatures (off by default). Durapack does not encrypt; use external encryption where required.
+  - **Payments and ledger exports**: Stream framed records between services and regions; optional RS parity (feature `fec-rs`) hardens lossy/intermittent links.
+  - **Cryptocurrency exchanges and blockchain market infra**: Capture bursty market data feeds and mempool traffic; recover partial packet captures; reconstruct orderflow timelines and validator/relayer logs with tamper‑evident chains. Use external encryption as needed; Durapack focuses on framing and recovery.
+    - CEX: tick/trade streams, order book deltas, risk/audit logs; carve intact frames from packet loss and reconstruct timelines across gaps.
+    - DEX/mempool: pending tx batches, block proposals, sequencer/rollup batches; resync fast after burst loss and validate frame‑chain continuity.
+    - Node/validator operators: consensus/peer logs and relayer traffic for incident post‑mortems; optional signatures provide authenticity (off by default).
+  - **Fraud/incident forensics**: Scan corrupted disks or packet captures and recover frames; confidence scores and reasons aid investigations.
+  - **Disaster recovery**: Recover useful records from partially damaged backups; superframes/skip lists accelerate mid‑stream seeks at scale.
 
 ## 🚀 Quick Start
 
@@ -435,108 +447,6 @@ Reader-side guidance:
 
 ---
 
-## 🔐 FEC sidecar format (pack)
-
-When `pack` is invoked with `--fec-rs-data N --fec-rs-parity K`, the tool writes a sidecar JSON (default `<output>.fec.json`) containing entries like:
-
-```json
-[
-  { "block_start_id": 1, "data": 8, "parity": 2, "parity_frame_ids": [9, 10] },
-  { "block_start_id": 11, "data": 8, "parity": 2, "parity_frame_ids": [19, 20] }
-]
-```
-
-- `block_start_id`: the first frame ID in the RS block (data frames)
-- `data`: N data frames
-- `parity`: K parity frames
-- `parity_frame_ids`: IDs of emitted parity frames for that block
-
-The sidecar lets downstream tools annotate timelines and, in future, attempt automated repairs. Today, `verify --rs-repair` reports whether RS blocks are theoretically reconstructable given N and K.
-
----
-
-## 📚 Documentation
-
-- [**Formal Specification (NEW)**](docs/FORMAL_SPEC.md) - Complete on-disk format specification
-- [Frame Specification](docs/spec.md) - Original specification document
-- [Quick Start Guide](QUICKSTART.md)
-- [FAQ - Frequently Asked Questions](FAQ.md)
-- [API Documentation](https://docs.rs/durapack-core)
-- [Examples](examples/)
-
----
-
-## 🏆 Why Durapack is Better
-
-Durapack is not just another container format; it's a complete system for robust data transport and archival, designed from the ground up to be observable, resilient, and performant in unreliable environments.
-
-### 1. Superior Resilience to Corruption
-
-Most standard formats like TAR, ZIP, or simple line-delimited JSON are brittle. A single corrupted byte can render the rest of the file unreadable.
-
-*   **Durapack's Advantage**: It is designed to survive damage. The `scan` command uses a 4-byte `DURP` marker to find and validate individual frames even within a corrupted file. It can skip over damaged sections and salvage all remaining intact data.
-
-### 2. Advanced Timeline Reconstruction
-
-When data is recovered, understanding the original sequence is crucial.
-
-*   **Durapack's Advantage**: Each frame is cryptographically linked to the previous one using a BLAKE3 hash. The `timeline` command uses these links to reconstruct the original order of frames. Crucially, it also explicitly identifies `gaps` (where frames are missing) and `orphans` (valid frames that can't be placed in the main sequence), providing a complete diagnostic picture.
-
-### 3. High-Performance Integrity and Linking
-
-The choice of hashing algorithm impacts both security and speed.
-
-*   **Durapack's Advantage**: It uses **BLAKE3** for integrity checks and linking. BLAKE3 is a modern cryptographic hash function that is significantly faster than older standards like SHA-2 or MD5, making it ideal for high-throughput applications without compromising on security.
-
-### 4. Rich, Actionable Diagnostics
-
-Most tools simply report success or failure.
-
-*   **Durapack's Advantage**: It provides detailed, structured (JSON) reports on the state of the data. The `timeline` command calculates a `continuity` percentage and lists every gap, giving you a precise measure of data loss. This is invaluable for monitoring and diagnostics.
-
-### Comparison Summary
-
-| Feature | Standard Formats (e.g., TAR, JSONL) | Durapack |
-| :--- | :--- | :--- |
-| **Corruption Handling** | Often fails on first error. | Scans and recovers all intact frames from a damaged stream. |
-| **Data Ordering** | Relies on file order; lost if corrupted. | Reconstructs the timeline using cryptographic links. |
-| **Gap Detection** | No built-in mechanism. | Explicitly reports gaps and orphaned frames. |
-| **Integrity** | Basic checksums (like CRC32) or none. | Modern, high-speed BLAKE3 hashing for strong integrity. |
-| **Diagnostics** | Binary pass/fail. | Rich JSON output with continuity stats, gaps, and orphans. |
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please fork the repository, create a feature branch, and submit a pull request. Ensure that `cargo fmt` and `cargo clippy` pass.
-
-## 📜 License
-
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
----
-
-**Status**: Prototype / Research. Use in production systems at your own risk.
-
----
-
-## ⚖️ Export Control
-
-This software is subject to U.S. export laws and regulations. By downloading or using this software, you agree to comply with all applicable export laws and regulations.
-
----
-
-### Continuous Integration
-
-- Linux CI runs formatting, clippy, and tests for the whole workspace.
-- Windows CI runs a PowerShell smoke test of all CLI commands.
-  - Workflow: `.github/workflows/windows-cli-smoke.yml`
-  - Local run: `pwsh -NoProfile -File scripts/test-cli.ps1`
-
----
 
 ## 🔒 Robust sync/marker (format robustness)
 
@@ -594,3 +504,14 @@ let encoded = FrameBuilder::new(1024)
 ```
 
 Note: These features are optional and backward-compatible; readers that don’t use them will still decode frames normally.
+
+---
+
+## 🚚 Transport & deployment patterns
+
+- Files: append‑only logs on local/remote storage; rotate and replicate with rsync/rclone; optionally add RS parity sidecars for long‑haul durability.
+- Pipes: stream JSONL into `pack -i - -o out.durp` and forward to downstream consumers; use `--progress` and `--rate-limit` to shape throughput.
+- Sockets: send framed bytes over TCP/QUIC; on the receiver, `scan` and `timeline` recover sequences even with segment loss or reordering.
+- Object stores: store `.durp` + `.fec.json` sidecars in S3/Blob; scanners can resume partial downloads and still recover frames.
+- Verification: run `verify --report-gaps` in CI to fail builds on integrity regressions; export with `export` to strip signatures for distribution.
+

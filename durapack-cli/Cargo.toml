@@ -11,6 +11,10 @@ description = "Command-line tool for Durapack frame manipulation"
 name = "durapack"
 path = "src/main.rs"
 
+[lib]
+name = "durapack_cli"
+path = "src/lib.rs"
+
 [dependencies]
 durapack-core = { path = "../durapack-core", default-features = true, features = [] }
 clap.workspace = true

@@ -1,7 +1,11 @@
 use anyhow::{bail, Context, Result};
+#[cfg(feature = "fec-rs")]
 use bytes::Bytes;
+#[cfg(feature = "fec-rs")]
 use std::fs;
+#[cfg(feature = "fec-rs")]
 use std::io::{self, Read, Write};
+#[cfg(feature = "fec-rs")]
 use tracing::info;
 
 #[cfg(feature = "fec-rs")]
@@ -27,6 +31,7 @@ pub fn inject_parity(
 ) -> Result<()> {
     #[cfg(not(feature = "fec-rs"))]
     {
+        let _ = (input, output, n_data, k_parity, fec_index_out, dry_run);
         bail!("This build does not include RS FEC support. Rebuild with --features fec-rs");
     }
 

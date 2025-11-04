@@ -226,13 +226,13 @@ pub fn execute_ext(
         }
         let idx_bytes =
             fs::read(path).with_context(|| format!("Failed to read FEC index: {}", path))?;
-        let entries: Vec<FecIndexEntry> =
+        let _entries: Vec<FecIndexEntry> =
             serde_json::from_slice(&idx_bytes).with_context(|| "Invalid FEC index JSON")?;
         println!("\n=== FEC (RS) Repair Simulation ===");
         #[cfg(feature = "fec-rs")]
         {
             let dec = RsDecoder;
-            for entry in entries {
+            for entry in _entries {
                 let have = entry.data; // assume we have all data frames here; a real flow would map IDs to present/missing
                 let can = dec.can_reconstruct(have + entry.parity, entry.data);
                 println!(

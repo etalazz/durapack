@@ -192,7 +192,7 @@ pub fn execute_ext(
                     let mut parity_ids = Vec::new();
                     for pb in parity_blocks {
                         // Wrap parity shard into a frame with IS_SUPERFRAME flag off; mark trailer
-                        let mut b = FrameBuilder::new(next_frame_id + 1)
+                        let mut b = FrameBuilder::new(next_frame_id)
                             .payload(Bytes::from(pb.data))
                             .prev_hash(prev_hash);
                         if use_sig {
@@ -220,8 +220,8 @@ pub fn execute_ext(
                         };
                         output_data.extend_from_slice(&enc_bytes);
                         bytes_written_total += enc_bytes.len() as u64;
-                        next_frame_id += 1;
                         parity_ids.push(parity_frame.header.frame_id);
+                        next_frame_id += 1;
                     }
                     fec_index.push(FecIndexEntry {
                         block_start_id: frame_id + 1 - n as u64,
@@ -229,6 +229,10 @@ pub fn execute_ext(
                         parity: k,
                         parity_frame_ids: parity_ids,
                     });
+                }
+                #[cfg(not(feature = "fec-rs"))]
+                {
+                    let _ = k; // silence unused when RS is not enabled
                 }
                 block_frames.clear();
             }

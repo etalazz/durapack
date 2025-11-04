@@ -9,15 +9,19 @@ use durapack_core::{
     scanner::scan_stream,
 };
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Once;
 
-/// Test vector directory (relative to this crate)
-const TEST_VECTOR_DIR: &str = "../test_vectors";
+/// Resolve the test vector directory relative to the crate root robustly.
+fn tv_dir() -> PathBuf {
+    // durapack-core/Cargo.toml directory
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    base.join("..").join("test_vectors")
+}
 
 /// Build a full path for a test vector file
 fn tv(name: &str) -> String {
-    format!("{}/{}", TEST_VECTOR_DIR, name)
+    tv_dir().join(name).to_string_lossy().into_owned()
 }
 
 static INIT: Once = Once::new();
@@ -30,7 +34,7 @@ fn ensure_vectors() {
 
 /// Generate all test vectors
 pub fn generate_all_test_vectors() -> std::io::Result<()> {
-    let dir = Path::new(TEST_VECTOR_DIR);
+    let dir = tv_dir();
     if !dir.exists() {
         fs::create_dir_all(dir)?;
     }
@@ -50,7 +54,7 @@ pub fn generate_all_test_vectors() -> std::io::Result<()> {
     generate_duplicate_frames()?;
     generate_reordered_frames()?;
 
-    println!("✓ All test vectors generated in {}/", TEST_VECTOR_DIR);
+    println!("✓ All test vectors generated in {}/", tv_dir().display());
     Ok(())
 }
 

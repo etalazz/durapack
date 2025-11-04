@@ -41,6 +41,10 @@ enum Commands {
         #[arg(long)]
         blake3: bool,
 
+        /// Sign frames with Ed25519; provide a 32-byte secret key file (feature: ed25519-signatures)
+        #[arg(long, value_name = "keyfile")]
+        sign_ed25519: Option<String>,
+
         /// Starting frame ID
         #[arg(long, default_value = "1")]
         start_id: u64,
@@ -173,6 +177,16 @@ enum Commands {
         #[arg(long)]
         fec_index: Option<String>,
     },
+
+    /// Export tool: strip Ed25519 signatures and downgrade combined trailers to BLAKE3-only
+    Export {
+        /// Input .durp file ("-" for stdin)
+        #[arg(short, long)]
+        input: String,
+        /// Output file ("-" for stdout)
+        #[arg(short, long)]
+        output: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -196,6 +210,7 @@ fn main() -> Result<()> {
             input,
             output,
             blake3,
+            sign_ed25519,
             start_id,
             jsonl,
             chunk_strategy,
@@ -215,6 +230,7 @@ fn main() -> Result<()> {
             progress,
             fec_rs_data.zip(fec_rs_parity),
             fec_index_out.as_deref(),
+            sign_ed25519.as_deref(),
         ),
 
         Commands::Fec {
@@ -271,5 +287,9 @@ fn main() -> Result<()> {
             analyze,
             fec_index.as_deref(),
         ),
+
+        Commands::Export { input, output } => {
+            commands::verify::export_strip_signatures(&input, &output)
+        }
     }
 }

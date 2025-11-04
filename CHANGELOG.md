@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2025-11-04
+
+### Added
+- Integrity and authenticity (no confidentiality):
+  - Core trailer variant `Blake3WithEd25519Sig` (32-byte BLAKE3 + 64-byte Ed25519 signature). Off by default.
+  - Feature flag `ed25519-signatures` (optional `ed25519-dalek` dependency).
+  - Helpers: `compute_chain_hash(frame, prev_trailer)`, `encode_frame_struct_signed(frame, sk)`.
+  - Decoder validates the BLAKE3 portion; signature bytes are preserved in the trailer for verification.
+- CLI wiring:
+  - `pack --sign-ed25519 <keyfile>` (feature: `ed25519-signatures`) signs each emitted frame.
+  - `verify` reports signature verification status when signatures are present (public key via `DURAPACK_VERIFY_PUBKEY`).
+  - `export`: strips signatures and downgrades combined trailers to BLAKE3-only, for export/sharing.
+- Documentation:
+  - README updated with new CLI flags, a brief authenticity note (no encryption), and an export-control notice.
+
+### Changed
+- Scanner confidence now recognizes the combined BLAKE3+signature trailer.
+
+### Notes
+- Signature support is opt-in; existing CRC32C/BLAKE3-only deployments are unaffected.
+
 ## [0.2.3] - 2025-11-03
 
 ### Added

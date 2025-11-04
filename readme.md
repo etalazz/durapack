@@ -19,7 +19,9 @@ Durapack is a Rust library for encoding telemetry, audit, or mission data so tha
 
 ### 🛡️ A Note on Security and Scope
 
-Durapack is a general-purpose framing and data repair library. It **does not provide encryption**. If you need to protect data at rest or in transit, you should encrypt your payload *before* passing it to Durapack.
+Durapack is a general-purpose framing and data repair library. It **does not provide encryption**. For authenticity (without confidentiality), Durapack optionally supports Ed25519 signatures per-frame (feature-gated); see "CLI" below. If you need to protect data at rest or in transit, encrypt your payload before passing it to Durapack.
+
+> Export control: This software may be subject to U.S. export laws and regulations. You are responsible for compliance with all applicable laws. Signature support is off by default and can be stripped for export.
 
 ## 📖 Table of Contents
 
@@ -49,6 +51,7 @@ Durapack is a general-purpose framing and data repair library. It **does not pro
 - **no_std + alloc**: `durapack-core` builds without `std`; enable `std` feature for I/O convenience.
 - **Optional robust sync**: Preamble + low-autocorrelation sync word with bounded-Hamming fallback in scanner.
 - **Burst-error mitigation helpers**: Interleave/deinterleave utilities to spread bursts across frames.
+- **Optional authenticity** (no confidentiality): Combined BLAKE3+Ed25519 signature trailer (feature: `ed25519-signatures`).
 
 ## 🎯 Use Cases
 
@@ -131,6 +134,7 @@ cargo install durapack-cli
 - **`verify`**: Check links, hashes, and report gaps.
 - **`timeline`**: Rethread and export ordered result (JSON or Graphviz DOT).
 - **`fec`**: Post-facto parity injection (requires build with `--features fec-rs`).
+- **`export`**: Strip Ed25519 signatures from frames and downgrade to BLAKE3-only.
 
 ### New CLI ergonomics
 
@@ -143,7 +147,34 @@ cargo install durapack-cli
 - Carving payloads:
   - `scan --carve-payloads "payload_{stream}_{frame}.bin"` writes each recovered payload to disk. Combine with `--min-confidence <0.0-1.0>` to filter lower-confidence hits.
 - Visualizing timelines:
-  - `timeline --dot -o -` emits Graphviz DOT; add `--analyze` for labeled gaps, conflicts, clusters, and recovery notes; pipe to `dot` to render.
+  - `timeline --dot -o -` emits Graphviz DOT; add `--analyze` for labeled gaps, conflicts, clusters, and note-shaped recovery notes; pipe to `dot` to render.
+
+### Authenticity (optional)
+
+- Build with signing support:
+
+```bat
+cargo build -p durapack-cli --features ed25519-signatures
+```
+
+- Pack and sign frames:
+
+```bat
+Durapack pack -i data.json -o out.durp --sign-ed25519 secret.key
+```
+
+- Verify signatures (set a 32-byte public key file):
+
+```bat
+set DURAPACK_VERIFY_PUBKEY=public.key
+Durapack verify -i out.durp
+```
+
+- Strip signatures for export/sharing:
+
+```bat
+Durapack export -i out.durp -o out_nosig.durp
+```
 
 ### Examples (Windows cmd)
 
@@ -205,6 +236,8 @@ Example output (truncated):
      Output file for packed frames. Use "-" to write to stdout.
    - --blake3
      Use BLAKE3 trailer instead of CRC32C.
+   - --sign-ed25519 <keyfile>
+     Sign frames with Ed25519; requires build with `--features ed25519-signatures`.
    - --start-id <u64> (default: 1)
      Starting frame ID for the first frame.
    - --jsonl (default: false)
@@ -243,6 +276,8 @@ Example output (truncated):
     Load FEC sidecar for parity block metadata.
   - --rs-repair
     Simulate RS reconstructability per block (report-only; requires build with `--features fec-rs`).
+  - Signatures
+    Set `DURAPACK_VERIFY_PUBKEY=<keyfile>` (32-byte public key) to verify signatures when present.
 
  - timeline
    - -i, --input <FILE|->
@@ -254,33 +289,39 @@ Example output (truncated):
    - --dot (default: false)
      Emit a Graphviz DOT graph instead of JSON (to file or stdout).
    - --analyze (default: false)
-     Include detailed analysis in outputs. JSON gains `analysis` with `gap_reasons`, `conflicts`, `orphan_clusters`, and `recipes`. With `--dot`, the graph includes labeled gaps, conflict edges, orphan clusters, and note-shaped recipe hints.
+     Include detailed analysis in outputs. JSON gains `analysis` with `gap_reasons`, `conflicts`, `orphan_clusters`, and `recipes`. With `--dot`, the graph includes labeled gaps, conflict edges, orphan clusters, and note-shaped recovery notes.
   - --fec-index <path>
     Annotate DOT with RS clusters (N+K) if a sidecar is provided.
-+
-+- fec (post-facto parity injection; requires build with `--features fec-rs`)
-+  - -i, --input <FILE|->
-+    Input .durp file to protect.
-+  - -o, --output <FILE>
-+    Output file; if omitted, appends parity to the input file.
-+  - --n-data <N>
-+    RS data shard count.
-+  - --k-parity <K>
-+    RS parity shard count.
-+  - --fec-index-out <path>
-+    Write/update sidecar JSON mapping blocks and parity frame IDs.
-+  - --dry-run (default: false)
-+    Compute parity without writing frames; still emits sidecar if requested.
-+
-+Example:
-+
-+```bat
-+cargo run -p durapack-cli --features fec-rs -- fec ^
-+  --input out.durp ^
-+  --n-data 8 ^
-+  --k-parity 2 ^
-+  --fec-index-out out.durp.fec.json
-+```
+
+- export
+  - -i, --input <FILE|->
+    Input .durp file. Use "-" to read from stdin.
+  - -o, --output <FILE|->
+    Output .durp file without signatures. Use "-" to write to stdout.
+
+- fec (post-facto parity injection; requires build with `--features fec-rs`)
+  - -i, --input <FILE|->
+    Input .durp file to protect.
+  - -o, --output <FILE>
+    Output file; if omitted, appends parity to the input file.
+  - --n-data <N>
+    RS data shard count.
+  - --k-parity <K>
+    RS parity shard count.
+  - --fec-index-out <path>
+    Write/update sidecar JSON mapping blocks and parity frame IDs.
+  - --dry-run (default: false)
+    Compute parity without writing frames; still emits sidecar if requested.
+
+Example:
+
+```bat
+cargo run -p durapack-cli --features fec-rs -- fec ^
+  --input out.durp ^
+  --n-data 8 ^
+  --k-parity 2 ^
+  --fec-index-out out.durp.fec.json
+```
 
  Quick help
 
@@ -311,7 +352,7 @@ Each frame consists of:
    4 bytes   46 bytes   N bytes   0-32 bytes
 ```
 
-- **Marker**: `"DURP"` - enables byte-by-byte scanning.
+- **Marker**: "DURP" - enables byte-by-byte scanning.
 - **Header**: version, frame_id, prev_hash, payload_len, flags.
 - **Payload**: Application data.
 - **Trailer**: Optional CRC32C or BLAKE3 hash.

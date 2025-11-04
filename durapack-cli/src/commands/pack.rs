@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
 use bytes::Bytes;
+#[cfg(feature = "ed25519-signatures")]
+use durapack_core::encoder::encode_frame_struct_signed;
 use durapack_core::encoder::FrameBuilder;
 #[cfg(feature = "fec-rs")]
 use durapack_core::fec::{FecBlock, RedundancyEncoder, RsEncoder};
+#[cfg(feature = "ed25519-signatures")]
+use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -25,6 +29,7 @@ pub fn execute(input: &str, output: &str, use_blake3: bool, start_id: u64) -> Re
         false,
         None,
         None,
+        None,
     )
 }
 
@@ -40,8 +45,25 @@ pub fn execute_ext(
     progress: bool,
     fec_rs: Option<(usize, usize)>,
     fec_index_out: Option<&str>,
+    sign_key_path: Option<&str>,
 ) -> Result<()> {
     info!("Packing data from {} to {}", input, output);
+
+    #[cfg(feature = "ed25519-signatures")]
+    let signing_key: Option<SigningKey> = if let Some(path) = sign_key_path {
+        let bytes = fs::read(path).with_context(|| format!("Failed to read key: {}", path))?;
+        let sk = SigningKey::from_bytes(
+            bytes
+                .as_slice()
+                .try_into()
+                .context("Key must be 32 bytes")?,
+        );
+        Some(sk)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "ed25519-signatures"))]
+    let _ = sign_key_path; // suppress unused
 
     // Read input
     let content = if input == "-" {
@@ -118,7 +140,10 @@ pub fn execute_ext(
             builder = builder.mark_first();
         }
 
-        if use_blake3 {
+        let use_sig = sign_key_path.is_some();
+        if use_sig {
+            builder = builder.with_blake3_signature();
+        } else if use_blake3 {
             builder = builder.with_blake3();
         } else {
             builder = builder.with_crc32c();
@@ -130,8 +155,23 @@ pub fn execute_ext(
 
         prev_hash = frame_struct.compute_hash();
 
-        let encoded = durapack_core::encoder::encode_frame_struct(&frame_struct)
-            .with_context(|| format!("Failed to encode frame {}", frame_id))?;
+        let encoded = {
+            #[cfg(feature = "ed25519-signatures")]
+            {
+                if let Some(sk) = &signing_key {
+                    encode_frame_struct_signed(&frame_struct, sk)
+                        .with_context(|| format!("Failed to encode+sign frame {}", frame_id))?
+                } else {
+                    durapack_core::encoder::encode_frame_struct(&frame_struct)
+                        .with_context(|| format!("Failed to encode frame {}", frame_id))?
+                }
+            }
+            #[cfg(not(feature = "ed25519-signatures"))]
+            {
+                durapack_core::encoder::encode_frame_struct(&frame_struct)
+                    .with_context(|| format!("Failed to encode frame {}", frame_id))?
+            }
+        };
 
         output_data.extend_from_slice(&encoded);
         bytes_written_total += encoded.len() as u64;
@@ -155,14 +195,29 @@ pub fn execute_ext(
                         let mut b = FrameBuilder::new(next_frame_id + 1)
                             .payload(Bytes::from(pb.data))
                             .prev_hash(prev_hash);
-                        if use_blake3 {
+                        if use_sig {
+                            b = b.with_blake3_signature();
+                        } else if use_blake3 {
                             b = b.with_blake3();
                         } else {
                             b = b.with_crc32c();
                         }
                         let parity_frame = b.build_struct()?;
                         prev_hash = parity_frame.compute_hash();
-                        let enc_bytes = durapack_core::encoder::encode_frame_struct(&parity_frame)?;
+                        let enc_bytes = {
+                            #[cfg(feature = "ed25519-signatures")]
+                            {
+                                if let Some(sk) = &signing_key {
+                                    encode_frame_struct_signed(&parity_frame, sk)?
+                                } else {
+                                    durapack_core::encoder::encode_frame_struct(&parity_frame)?
+                                }
+                            }
+                            #[cfg(not(feature = "ed25519-signatures"))]
+                            {
+                                durapack_core::encoder::encode_frame_struct(&parity_frame)?
+                            }
+                        };
                         output_data.extend_from_slice(&enc_bytes);
                         bytes_written_total += enc_bytes.len() as u64;
                         next_frame_id += 1;

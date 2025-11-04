@@ -48,6 +48,8 @@ pub enum TrailerType {
     Crc32c,
     /// BLAKE3 hash (32 bytes)
     Blake3,
+    /// BLAKE3 hash (32 bytes) followed by Ed25519 signature (64 bytes)
+    Blake3WithEd25519Sig,
 }
 
 impl TrailerType {
@@ -57,6 +59,7 @@ impl TrailerType {
             TrailerType::None => 0,
             TrailerType::Crc32c => CRC32C_SIZE,
             TrailerType::Blake3 => BLAKE3_HASH_SIZE,
+            TrailerType::Blake3WithEd25519Sig => BLAKE3_HASH_SIZE + 64,
         }
     }
 }
@@ -145,9 +148,14 @@ impl FrameFlags {
 
     /// Get the trailer type
     pub const fn trailer_type(&self) -> TrailerType {
-        if self.has_blake3() {
+        let has_b3 = self.has_blake3();
+        let has_crc = self.has_crc32c();
+        if has_b3 && has_crc {
+            // Combined semantics: BLAKE3 + Ed25519 signature
+            TrailerType::Blake3WithEd25519Sig
+        } else if has_b3 {
             TrailerType::Blake3
-        } else if self.has_crc32c() {
+        } else if has_crc {
             TrailerType::Crc32c
         } else {
             TrailerType::None

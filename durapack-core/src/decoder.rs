@@ -116,6 +116,29 @@ pub fn decode_frame<R: Read>(reader: &mut R) -> Result<Frame, FrameError> {
 
             Some(Bytes::copy_from_slice(&expected_hash))
         }
+        TrailerType::Blake3WithEd25519Sig => {
+            // 32-byte hash + 64-byte signature
+            let mut expected_hash = [0u8; 32];
+            reader.read_exact(&mut expected_hash)?;
+            let mut sig_bytes = [0u8; 64];
+            reader.read_exact(&mut sig_bytes)?;
+
+            // Compute hash over marker + header + payload
+            let mut data = Vec::with_capacity(MIN_HEADER_SIZE + payload.len());
+            data.extend_from_slice(FRAME_MARKER);
+            data.extend_from_slice(&header_buf);
+            data.extend_from_slice(&payload);
+            let actual_hash = blake3::hash(&data);
+
+            if actual_hash.as_bytes() != &expected_hash {
+                return Err(FrameError::HashMismatch);
+            }
+
+            let mut trailer = Vec::with_capacity(96);
+            trailer.extend_from_slice(&expected_hash);
+            trailer.extend_from_slice(&sig_bytes);
+            Some(Bytes::from(trailer))
+        }
     };
 
     Ok(Frame::with_trailer(
@@ -255,6 +278,18 @@ pub fn decode_frame_from_bytes_zero_copy(buf: Bytes) -> Result<Frame, FrameError
             }
             let actual = blake3::hash(main_slice);
             if actual.as_bytes() != trailer_bytes {
+                return Err(FrameError::HashMismatch);
+            }
+        }
+        TrailerType::Blake3WithEd25519Sig => {
+            if trailer_bytes.len() != 96 {
+                return Err(FrameError::IncompleteFrame {
+                    expected: payload_end + 96,
+                    actual: buf.len(),
+                });
+            }
+            let actual = blake3::hash(main_slice);
+            if actual.as_bytes() != &trailer_bytes[0..32] {
                 return Err(FrameError::HashMismatch);
             }
         }

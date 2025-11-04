@@ -3,12 +3,63 @@ use colored::*;
 #[cfg(feature = "fec-rs")]
 use durapack_core::fec::{RedundancyDecoder, RsDecoder};
 use durapack_core::{
+    constants::TrailerType,
     linker::{link_frames, verify_backlinks},
     scanner::scan_stream,
 };
+#[cfg(feature = "ed25519-signatures")]
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use tracing::{info, warn};
+
+pub fn export_strip_signatures(input: &str, output: &str) -> Result<()> {
+    // Read input bytes
+    let data = if input == "-" {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        buf
+    } else {
+        fs::read(input).with_context(|| format!("Failed to read input file: {}", input))?
+    };
+    // Scan frames, rebuild a new stream with signatures stripped
+    let located = durapack_core::scanner::scan_stream(&data);
+    if located.is_empty() {
+        if output == "-" {
+            io::stdout().write_all(&data)?;
+        } else {
+            fs::write(output, &data)?;
+        }
+        return Ok(());
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(data.len());
+    for lf in located {
+        let mut f = lf.frame;
+        let ttype = f.header.flags.trailer_type();
+        if ttype == TrailerType::Blake3WithEd25519Sig {
+            // Downgrade to BLAKE3-only: keep the first 32 bytes of trailer
+            if let Some(tr) = &f.trailer {
+                if tr.len() == 96 {
+                    let new_trailer = bytes::Bytes::copy_from_slice(&tr[..32]);
+                    f.trailer = Some(new_trailer);
+                    // Also adjust flags to HAS_BLAKE3 only
+                    f.header.flags = durapack_core::constants::FrameFlags::new(
+                        durapack_core::constants::FrameFlags::HAS_BLAKE3,
+                    );
+                }
+            }
+        }
+        // Re-encode
+        let enc = durapack_core::encoder::encode_frame_struct(&f)?;
+        out.extend_from_slice(&enc);
+    }
+    if output == "-" {
+        io::stdout().write_all(&out)?;
+    } else {
+        fs::write(output, &out)?;
+    }
+    Ok(())
+}
 
 #[allow(dead_code)]
 pub fn execute(input: &str, report_gaps: bool) -> Result<()> {
@@ -65,6 +116,75 @@ pub fn execute_ext(
         println!("Invalid frames:     {}", invalid_frames.to_string().red());
     } else {
         println!("Invalid frames:     {}", invalid_frames);
+    }
+
+    // Signature verification (best-effort): if any frame carries Blake3+Sig, try to verify with a provided key env var
+    #[cfg(feature = "ed25519-signatures")]
+    {
+        if frames
+            .iter()
+            .any(|f| f.header.flags.trailer_type() == TrailerType::Blake3WithEd25519Sig)
+        {
+            println!("\n=== Signatures (Ed25519) ===");
+            if let Ok(pk_path) = std::env::var("DURAPACK_VERIFY_PUBKEY") {
+                match fs::read(pk_path) {
+                    Ok(bytes) => {
+                        let pk_bytes: [u8; 32] = if bytes.len() == 32 {
+                            let mut arr = [0u8; 32];
+                            arr.copy_from_slice(&bytes);
+                            arr
+                        } else {
+                            [0u8; 32]
+                        };
+                        if let Ok(vk) = VerifyingKey::from_bytes(&pk_bytes) {
+                            let mut ok = 0usize;
+                            let mut bad = 0usize;
+                            for f in &frames {
+                                if f.header.flags.trailer_type()
+                                    != TrailerType::Blake3WithEd25519Sig
+                                {
+                                    continue;
+                                }
+                                // trailer: [32 hash][64 sig]
+                                if let Some(tr) = &f.trailer {
+                                    if tr.len() == 96 {
+                                        let sig_bytes: [u8; 64] = tr[32..96].try_into().unwrap();
+                                        let sig = Signature::from_bytes(&sig_bytes);
+                                        // Build message: marker+header+payload
+                                        let mut msg = Vec::with_capacity(
+                                            durapack_core::constants::MIN_HEADER_SIZE
+                                                + f.payload.len(),
+                                        );
+                                        msg.extend_from_slice(
+                                            durapack_core::constants::FRAME_MARKER,
+                                        );
+                                        msg.push(f.header.version);
+                                        msg.extend_from_slice(&f.header.frame_id.to_be_bytes());
+                                        msg.extend_from_slice(&f.header.prev_hash);
+                                        msg.extend_from_slice(&f.header.payload_len.to_be_bytes());
+                                        msg.push(f.header.flags.as_u8());
+                                        msg.extend_from_slice(&f.payload);
+                                        if vk.verify(&msg, &sig).is_ok() {
+                                            ok += 1;
+                                        } else {
+                                            bad += 1;
+                                        }
+                                    }
+                                }
+                            }
+                            println!("Verified signatures: {} valid, {} invalid", ok, bad);
+                        } else {
+                            println!("Public key file invalid (expected 32 bytes)");
+                        }
+                    }
+                    Err(_) => println!(
+                        "Public key not found; set DURAPACK_VERIFY_PUBKEY to a 32-byte key file"
+                    ),
+                }
+            } else {
+                println!("Set DURAPACK_VERIFY_PUBKEY to verify signatures (32-byte key)");
+            }
+        }
     }
 
     // Link frames and check back-links

@@ -18,6 +18,8 @@ memchr = { version = "2", default-features = false }
 hashbrown = { version = "0.14", default-features = false }
 # Optional FEC backends
 reed-solomon-erasure = { version = "6", optional = true }
+# Optional signatures
+ed25519-dalek = { version = "2", optional = true, default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 proptest.workspace = true
@@ -39,6 +41,8 @@ logging = ["tracing"]
 fec-rs = ["std", "reed-solomon-erasure"]
 fec-raptorq = []
 fec-ldpc = []
+# Ed25519 signatures (optional)
+ed25519-signatures = ["ed25519-dalek"]
 
 [[example]]
 name = "basic_encode"

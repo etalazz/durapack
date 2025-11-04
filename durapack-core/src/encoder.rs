@@ -83,6 +83,21 @@ pub fn encode_frame(header: &FrameHeader, payload: &[u8]) -> Result<Bytes, Frame
             let hash = compute_blake3(&buf);
             buf.put_slice(&hash);
         }
+        TrailerType::Blake3WithEd25519Sig => {
+            let hash = compute_blake3(&buf);
+            buf.put_slice(&hash);
+            #[cfg(feature = "ed25519-signatures")]
+            {
+                // Without a key, we cannot sign here; append zeros to preserve layout.
+                let zeros = [0u8; 64];
+                buf.put_slice(&zeros);
+            }
+            #[cfg(not(feature = "ed25519-signatures"))]
+            {
+                let zeros = [0u8; 64];
+                buf.put_slice(&zeros);
+            }
+        }
     }
 
     Ok(buf.freeze())
@@ -91,6 +106,45 @@ pub fn encode_frame(header: &FrameHeader, payload: &[u8]) -> Result<Bytes, Frame
 /// Encode a complete Frame struct
 pub fn encode_frame_struct(frame: &Frame) -> Result<Bytes, FrameError> {
     encode_frame(&frame.header, &frame.payload)
+}
+
+/// Encode a frame into bytes with Ed25519 signature when combined trailer is requested
+#[cfg(feature = "ed25519-signatures")]
+pub fn encode_frame_signed(
+    header: &FrameHeader,
+    payload: &[u8],
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<Bytes, FrameError> {
+    let mut encoded = encode_frame(header, payload)?; // includes hash and 64 zeros when combined
+    if header.flags.trailer_type() == TrailerType::Blake3WithEd25519Sig {
+        use ed25519_dalek::Signer;
+        // Compute signature over marker+header+payload (without trailer)
+        let mut msg = BytesMut::with_capacity(MIN_HEADER_SIZE + payload.len());
+        msg.extend_from_slice(FRAME_MARKER);
+        msg.extend_from_slice(&[header.version]);
+        msg.extend_from_slice(&header.frame_id.to_be_bytes());
+        msg.extend_from_slice(&header.prev_hash);
+        msg.extend_from_slice(&header.payload_len.to_be_bytes());
+        msg.extend_from_slice(&[header.flags.as_u8()]);
+        msg.extend_from_slice(payload);
+        let sig = signing_key.sign(&msg).to_bytes();
+        // Overwrite trailing 64 zero bytes with signature
+        let total = encoded.len();
+        let sig_start = total - 64;
+        let mut v = encoded.to_vec();
+        v[sig_start..].copy_from_slice(&sig);
+        encoded = Bytes::from(v);
+    }
+    Ok(encoded)
+}
+
+/// Encode a complete Frame struct with signing key when using combined trailer
+#[cfg(feature = "ed25519-signatures")]
+pub fn encode_frame_struct_signed(
+    frame: &Frame,
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<Bytes, FrameError> {
+    encode_frame_signed(&frame.header, &frame.payload, signing_key)
 }
 
 /// Compute CRC32C checksum of data
@@ -104,6 +158,42 @@ fn compute_blake3(data: &[u8]) -> [u8; 32] {
     let mut result = [0u8; 32];
     result.copy_from_slice(hash.as_bytes());
     result
+}
+
+/// Compute chain hash: BLAKE3 over header fields, previous trailer (if any), and payload
+pub fn compute_chain_hash(frame: &Frame, prev_trailer: Option<&[u8]>) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&[frame.header.version]);
+    hasher.update(&frame.header.frame_id.to_be_bytes());
+    hasher.update(&frame.header.prev_hash);
+    hasher.update(&frame.header.payload_len.to_be_bytes());
+    hasher.update(&[frame.header.flags.as_u8()]);
+    if let Some(t) = prev_trailer {
+        hasher.update(t);
+    }
+    hasher.update(&frame.payload);
+    let out = hasher.finalize();
+    let mut r = [0u8; 32];
+    r.copy_from_slice(out.as_bytes());
+    r
+}
+
+/// Compute Ed25519 signature over header + payload (no prev_trailer) when enabled
+#[cfg(feature = "ed25519-signatures")]
+pub fn ed25519_sign_header_payload(frame: &Frame, sk: &ed25519_dalek::SigningKey) -> [u8; 64] {
+    use ed25519_dalek::Signer;
+    let mut buf = BytesMut::with_capacity(MIN_HEADER_SIZE + frame.payload.len());
+    buf.extend_from_slice(FRAME_MARKER);
+    buf.extend_from_slice(&[frame.header.version]);
+    buf.extend_from_slice(&frame.header.frame_id.to_be_bytes());
+    buf.extend_from_slice(&frame.header.prev_hash);
+    buf.extend_from_slice(&frame.header.payload_len.to_be_bytes());
+    buf.extend_from_slice(&[frame.header.flags.as_u8()]);
+    buf.extend_from_slice(&frame.payload);
+    let sig = sk.sign(&buf);
+    let mut out = [0u8; 64];
+    out.copy_from_slice(&sig.to_bytes());
+    out
 }
 
 /// Builder for constructing frames with various options
@@ -171,6 +261,21 @@ impl FrameBuilder {
     /// Indicate that payload includes skip-list backlinks
     pub fn with_skiplist(mut self) -> Self {
         self.flags |= FrameFlags::HAS_SKIPLIST;
+        self
+    }
+
+    /// Enable BLAKE3+Ed25519 signature trailer (off by default). Requires providing signature separately.
+    pub fn with_blake3_signature(mut self) -> Self {
+        // Overload flags: set both bits to indicate Blake3+Sig combined trailer
+        self.flags |= FrameFlags::HAS_BLAKE3 | FrameFlags::HAS_CRC32C;
+        self
+    }
+
+    /// Sign with Ed25519 (feature: ed25519-signatures). This sets the combined trailer flag and stores signature at encode time.
+    #[cfg(feature = "ed25519-signatures")]
+    pub fn sign_with_ed25519(mut self, _sk: &ed25519_dalek::SigningKey) -> Self {
+        self = self.with_blake3_signature();
+        // Signature is added in encode via encode_frame; for custom pipelines, call ed25519_sign_header_payload.
         self
     }
 

@@ -126,6 +126,7 @@ fn compute_confidence(lf: &LocatedFrame, hit: MarkerHit) -> f32 {
     use crate::constants::TrailerType;
     match lf.frame.header.flags.trailer_type() {
         TrailerType::Blake3 => score += 0.20,
+        TrailerType::Blake3WithEd25519Sig => score += 0.22,
         TrailerType::Crc32c => score += 0.10,
         TrailerType::None => {}
     }

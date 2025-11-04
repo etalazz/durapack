@@ -66,14 +66,8 @@ pub fn inject_parity(
         }
         let mut fec_index: Vec<FecIndexEntry> = Vec::new();
 
-        // Prepare output buffer (append mode if output omitted)
-        let mut out_bytes: Vec<u8> = if dry_run {
-            Vec::new()
-        } else if let Some(out_path) = output {
-            fs::read(out_path).unwrap_or_default()
-        } else {
-            data.clone()
-        };
+        // Prepare output buffer seeded with original data (append parity afterwards)
+        let mut out_bytes: Vec<u8> = if dry_run { Vec::new() } else { data.clone() };
 
         let enc = RsEncoder::new(n_data, k_parity);
         let mut block: Vec<Frame> = Vec::with_capacity(n_data);
@@ -150,5 +144,188 @@ pub fn inject_parity(
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::inject_parity;
+    use std::fs;
+    use tempfile::tempdir;
+
+    // Helpers to build a small .durp buffer with N frames
+    #[cfg(feature = "fec-rs")]
+    fn make_durp_with_frames(count: u64) -> Vec<u8> {
+        use bytes::Bytes;
+        use durapack_core::encoder::{encode_frame_struct, FrameBuilder};
+        let mut bytes_out = Vec::new();
+        let mut prev_hash = [0u8; 32];
+        for id in 1..=count {
+            let mut b = FrameBuilder::new(id).payload(Bytes::from(format!("{{\"id\":{}}}", id)));
+            if id == 1 {
+                b = b.mark_first();
+            }
+            // default CRC32C to keep parity default consistent
+            b = b.with_crc32c();
+            b = b.prev_hash(prev_hash);
+            let f = b.build_struct().unwrap();
+            prev_hash = f.compute_hash();
+            let enc = encode_frame_struct(&f).unwrap();
+            bytes_out.extend_from_slice(&enc);
+        }
+        bytes_out
+    }
+
+    #[cfg(feature = "fec-rs")]
+    #[test]
+    fn test_inject_parity_dry_run_writes_sidecar_no_change() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input.durp");
+        let sidecar_path = dir.path().join("input.durp.fec.json");
+
+        let data = make_durp_with_frames(4);
+        fs::write(&input_path, &data).unwrap();
+        let orig_len = fs::metadata(&input_path).unwrap().len();
+
+        // Dry-run should not change the input file
+        inject_parity(
+            input_path.to_str().unwrap(),
+            None,
+            2,
+            1,
+            Some(sidecar_path.to_str().unwrap()),
+            true,
+        )
+        .unwrap();
+
+        let new_len = fs::metadata(&input_path).unwrap().len();
+        assert_eq!(orig_len, new_len, "dry-run must not modify input file");
+
+        // Sidecar exists and has 2 blocks (frames 1..2 and 3..4), 1 parity each
+        let side = fs::read_to_string(&sidecar_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&side).unwrap();
+        let arr = v.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["data"], serde_json::json!(2));
+        assert_eq!(arr[0]["parity"], serde_json::json!(1));
+        assert_eq!(arr[1]["data"], serde_json::json!(2));
+        assert_eq!(arr[1]["parity"], serde_json::json!(1));
+        assert_eq!(arr[0]["block_start_id"], serde_json::json!(1));
+        assert_eq!(arr[1]["block_start_id"], serde_json::json!(3));
+        assert_eq!(arr[0]["parity_frame_ids"].as_array().unwrap().len(), 1);
+        assert_eq!(arr[1]["parity_frame_ids"].as_array().unwrap().len(), 1);
+    }
+
+    #[cfg(feature = "fec-rs")]
+    #[test]
+    fn test_inject_parity_appends_to_new_output_file() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input2.durp");
+        let out_path = dir.path().join("out_with_parity.durp");
+        let sidecar_path = dir.path().join("out_with_parity.durp.fec.json");
+
+        let data = make_durp_with_frames(6);
+        fs::write(&input_path, &data).unwrap();
+        let orig_len = fs::metadata(&input_path).unwrap().len();
+
+        inject_parity(
+            input_path.to_str().unwrap(),
+            Some(out_path.to_str().unwrap()),
+            2,
+            1,
+            Some(sidecar_path.to_str().unwrap()),
+            false,
+        )
+        .unwrap();
+
+        let new_len = fs::metadata(&out_path).unwrap().len();
+        assert!(new_len > orig_len, "output should include appended parity frames");
+
+        // 6 frames -> 3 blocks of 2 with 1 parity each
+        let side = fs::read_to_string(&sidecar_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&side).unwrap();
+        let arr = v.as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[0]["block_start_id"], serde_json::json!(1));
+        assert_eq!(arr[1]["block_start_id"], serde_json::json!(3));
+        assert_eq!(arr[2]["block_start_id"], serde_json::json!(5));
+        for e in arr {
+            assert_eq!(e["parity_frame_ids"].as_array().unwrap().len(), 1);
+        }
+    }
+
+    #[cfg(feature = "fec-rs")]
+    #[test]
+    fn test_inject_parity_appends_in_place() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("input3.durp");
+        let data = make_durp_with_frames(2);
+        fs::write(&input_path, &data).unwrap();
+        let orig_len = fs::metadata(&input_path).unwrap().len();
+
+        inject_parity(
+            input_path.to_str().unwrap(),
+            None,
+            2,
+            1,
+            None,
+            false,
+        )
+        .unwrap();
+
+        let new_len = fs::metadata(&input_path).unwrap().len();
+        assert!(new_len > orig_len, "input should grow after in-place append");
+    }
+
+    #[cfg(feature = "fec-rs")]
+    #[test]
+    fn test_inject_parity_ignores_leftover_frames() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("leftover.durp");
+        let sidecar_path = dir.path().join("leftover.durp.fec.json");
+
+        // 3 frames with N=2 yields 1 protected block, 1 leftover frame ignored
+        let data = make_durp_with_frames(3);
+        fs::write(&input_path, &data).unwrap();
+
+        inject_parity(
+            input_path.to_str().unwrap(),
+            None,
+            2,
+            1,
+            Some(sidecar_path.to_str().unwrap()),
+            true,
+        )
+        .unwrap();
+
+        let side = fs::read_to_string(&sidecar_path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&side).unwrap();
+        let arr = v.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "only full N-sized blocks receive parity");
+        assert_eq!(arr[0]["block_start_id"], serde_json::json!(1));
+    }
+
+    #[cfg(feature = "fec-rs")]
+    #[test]
+    fn test_inject_parity_no_frames_error() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("empty.durp");
+        fs::write(&input_path, &[] as &[u8]).unwrap();
+        let err = inject_parity(input_path.to_str().unwrap(), None, 2, 1, None, true)
+            .expect_err("expected error for empty input");
+        let msg = format!("{}", err);
+        assert!(msg.contains("No frames found to protect"));
+    }
+
+    #[cfg(not(feature = "fec-rs"))]
+    #[test]
+    fn test_inject_parity_requires_feature() {
+        let dir = tempdir().unwrap();
+        let input_path = dir.path().join("noop.durp");
+        fs::write(&input_path, &[] as &[u8]).unwrap();
+        let err = inject_parity(input_path.to_str().unwrap(), None, 2, 1, None, true)
+            .expect_err("expected feature-gated error");
+        let msg = format!("{}", err);
+        assert!(msg.contains("Rebuild with --features fec-rs"));
     }
 }

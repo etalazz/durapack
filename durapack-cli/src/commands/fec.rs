@@ -239,7 +239,10 @@ mod tests {
         .unwrap();
 
         let new_len = fs::metadata(&out_path).unwrap().len();
-        assert!(new_len > orig_len, "output should include appended parity frames");
+        assert!(
+            new_len > orig_len,
+            "output should include appended parity frames"
+        );
 
         // 6 frames -> 3 blocks of 2 with 1 parity each
         let side = fs::read_to_string(&sidecar_path).unwrap();
@@ -263,18 +266,13 @@ mod tests {
         fs::write(&input_path, &data).unwrap();
         let orig_len = fs::metadata(&input_path).unwrap().len();
 
-        inject_parity(
-            input_path.to_str().unwrap(),
-            None,
-            2,
-            1,
-            None,
-            false,
-        )
-        .unwrap();
+        inject_parity(input_path.to_str().unwrap(), None, 2, 1, None, false).unwrap();
 
         let new_len = fs::metadata(&input_path).unwrap().len();
-        assert!(new_len > orig_len, "input should grow after in-place append");
+        assert!(
+            new_len > orig_len,
+            "input should grow after in-place append"
+        );
     }
 
     #[cfg(feature = "fec-rs")]

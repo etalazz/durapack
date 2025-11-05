@@ -1525,7 +1525,6 @@ fn test_export_single_frame() {
 
 #[test]
 fn test_verify_frames_with_validation_errors() {
-    
     let td = tempdir().unwrap();
     let input_path = td.path().join("validation_errors.durp");
 

@@ -32,4 +32,5 @@ tarpaulin-report.html
 cobertura.xml
 
 /CLAUDE.md
+/.claude/
 .claude/settings.local.json
